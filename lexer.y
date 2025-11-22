@@ -19,8 +19,6 @@ TablaScopes* tablaGral = NULL;
 int nivelScope = 0;
 char* tipoDatoActual = NULL;
 int esConstante = 0, esExterno = 0, esUnsigned = 0;
-int ultimaExp_esLiteral = 0;
-char ultimaConstanteLeida[64];
 
 /* Helper para reportar errores */
 void report_error(const char *where, int line, const char *msg) {
@@ -41,28 +39,23 @@ void reportCerrarScope(const char *msg) {
     nivelScope--;
 }
 /* para validar identificadores */
-void validarExpresion(const char* expr, int line) {
-    if (expr && esIdentificador(expr)) {
-        Simbolo* s = buscarSimbolo(tablaGral, expr);
-        if (!s)
-            report_error("Error semántico", line, "identificador no declarado");
-    }
-}
-/* detecta expresion identificador
-    si el token es una cadena sin operadores --> es identificador */
-int esIdentificador(const char* expr) {
-    return strcmp(expr, "char*") == 0;
-}
+// void validarExpresion(const char* expr, int line) {
+//     if (expr && esIdentificador(expr)) {
+//         Simbolo* s = buscarSimbolo(tablaGral, expr);
+//         if (!s)
+//             report_error("Error semántico", line, "identificador no declarado");
+//     }
+// }
 // tipos compatibles para asignaciones
 int tiposCompatibles(char* t1, char* t2) {
     if (!t1 || !t2) return 0;
-    if (strcmp(t1, "error") == 0 || strcmp(t2, "error") == 0) return 0;
+    if (strcmp(t2, "error") == 0) return 0;
 
     if (strcmp(t1, t2) == 0) return 1;
 
     // conversiones simples
-    if ((strcmp(destino,"double")==0 && strcmp(origen,"int")==0) ||
-        (strcmp(destino,"double")==0 && strcmp(origen,"float")==0) ||
+    if ((strcmp(t1,"double")==0 && strcmp(t2,"int")==0) ||
+        (strcmp(t1,"double")==0 && strcmp(t2,"float")==0) ||
         (strcmp(t1, "float") == 0 && strcmp(t2, "int") == 0) ||
         (strcmp(t1, "int") == 0 && strcmp(t2, "char") == 0))
         return 1;
@@ -73,24 +66,12 @@ int tiposCompatibles(char* t1, char* t2) {
 
     return 0;
 }
-// int expresion_es_literal(char* tipoExp) {
-//     if (strcmp(tipoExp, "int") == 0) return 1;
-//     if (strcmp(tipoExp, "double") == 0) return 1;
-//     if (strcmp(tipoExp, "float") == 0) return 1;
-//     if (strcmp(tipoExp, "char") == 0) return 1;
-//     if (strcmp(tipoExp, "char*") == 0) return 1; // solo si viene de CADENA
-
-//     return 0;
-// }
-int valorPerteneceAlEnum(Simbolo* enumSimbolo, int valor) {
+int valorPerteneceAlEnum(Simbolo* enumSimbolo, char* valor) {
     for (int i = 0; i < arraySize(enumSimbolo->miembros); i++) {
         Enumerador* enumVal = (Enumerador*) findElemArray(enumSimbolo->miembros, i);
-        if (enumVal->valor == (int) valor) return 1;
+        if (itoa(enumVal->valor) == valor || enumVal->nombre == valor) return 1;
     }
     return 0;
-}
-int expresionNegativa(char* tipoExp) {
-    return strcmp(tipoExp,"negativo") == 0;
 }
 %}
 
@@ -102,10 +83,11 @@ int expresionNegativa(char* tipoExp) {
     double dval; // real
     char cval; // caracter
     char* cadena; // cadena, tipo_dato, identificador
-    char* tipo;  // tipo semántico de las expresiones (int, float, etc.)
+    Array* arr;
 }
 
-%token <ival> ENTERO
+// token es para definir el tipo de dato que almacena un terminal
+%token <ival> ENTERO //defino que entero es un tipo ival -> es int de union
 %token <dval> NUMERO
 %token <cval> CARACTER
 %token <cadena> CADENA TIPO_DATO IDENTIFICADOR
@@ -114,8 +96,10 @@ int expresionNegativa(char* tipoExp) {
 %token INCREMENTO DECREMENTO MAS_IGUAL MENOS_IGUAL DIV_IGUAL POR_IGUAL
 %token IGUALDAD DIFERENTE AND OR MAYOR_IGUAL MENOR_IGUAL
 
-%type <tipo> expresion expresion_opt expCondicional expOr expAnd expIgualdad expRelacional expAditiva expMultiplicativa expUnaria expPostfijo expPrimaria
-%type <cadena> parametro
+// type es para definir el tipo de dato que almacena un no terminal
+%type <cadena> expresion expresion_opt expCondicional expOr expAnd expIgualdad expRelacional expAditiva expMultiplicativa expUnaria expPostfijo expPrimaria
+%type <cadena> inicializacion_opt parametro
+%type <arr> lista_ids lista_enumeradores ids_opt parametros_opt
 
 /* Precedencia y asociatividad */
 %left OR
@@ -140,6 +124,11 @@ input
 declaraciones_opt
     : /* vacío */
     | declaraciones_opt declaracion
+    | declaraciones_opt error {
+        report_error("en declaraciones_opt", @$.first_line, "declaracion invalida");
+        yyerrok;
+        yyclearin;
+    }
     ;
 
 declaracion
@@ -147,8 +136,8 @@ declaracion
     | declaFuncion
     | declaEnum
     
-    | error ';' {
-        report_error("en declaracion", @$.first_line, "Token inesperado a nivel de declaración. Recuperado hasta ';'");
+    | error {
+        report_error("en declaracion", @$.first_line, "Token inesperado a nivel de declaración.");
         yyerrok;
         yyclearin;
     }
@@ -156,25 +145,23 @@ declaracion
 
 declaEnum //me parece que un enum es constante
     : ENUM IDENTIFICADOR '{' lista_enumeradores '}' lista_ids ';' {
-        char* nombre = strdup($2); // obligo a enum a tener key para que sea menos complejo
+        char* nombre = $2; // obligo a enum a tener key para que sea menos complejo
         Simbolo* s = crearSimbolo(nombre, ENUM, strdup("enum"), @$.first_line, nivelScope, 1, 0, 0);
         // si esta declarado en el scope actual --> redeclarado
         if (!agregarSimbolo(tablaGral, s)) {
             report_error("en declaEnum", @$.first_line, "enum redeclarado.");
-            free(s->tipoDato);
-            free(s);
+            destruirSimbolo(s);
         } else {
             /* lista_enumeradores devuelve Array* de char* con noms de los enumeradores*/
-            enumSym->miembros = $4;
-            enumSym->cantMiembros = arraySize($4);
+            s->miembros = $4;
+            s->cantMiembros = arraySize($4);
             if ($6) {
                 for (int i = 0; i < arraySize($6); i++) {
                     char* varEnum = (char*) findElemArray($6, i); // variable declarada al final del enum
                     Simbolo* t = crearSimbolo(varEnum, VARIABLE, nombre, @$.first_line, nivelScope, 0, 0, 0);
                     if (!agregarSimbolo(tablaGral, s)) {
                         report_error("en id_opt", @$.first_line, "existe variable con ese nombre");
-                        free(s->tipoDato);
-                        free(s);
+                        destruirSimbolo(s);
                     } else {
                         t->miembros = s->miembros; // a la variable solo puede asignarsele 1 de los enumeradores
                         t->cantMiembros = s->cantMiembros;
@@ -188,12 +175,12 @@ declaEnum //me parece que un enum es constante
     }
 
     | ENUM IDENTIFICADOR error lista_enumeradores '}' lista_ids ';' {
-        report_error("en declaEnum", @$.first_line, "Falta la llave de apertura '{' después de 'enum' o token inesperado.");
+        report_error("en declaEnum", @$.first_line, "Falta la llave de apertura '{'.");
         yyerrok;
-        yyclearin; // Recuperamos hasta '{' o un token que nos permita continuar.
+        yyclearin;
     }
     | ENUM IDENTIFICADOR '{' lista_enumeradores error ';' {
-        report_error("en declaEnum", @$.first_line, "Error en la lista de enumeradores o falta la llave de cierre '}'. Recuperado hasta ';'.");
+        report_error("en declaEnum", @$.first_line, "falta la llave de cierre '}'. Recuperado hasta ';'.");
         yyerrok;
         yyclearin;
     }
@@ -202,21 +189,35 @@ declaEnum //me parece que un enum es constante
         yyerrok;
         yyclearin;
     }
+    | ENUM IDENTIFICADOR '{' error '}' lista_ids ';' {
+        report_error("en declaEnum", @$.first_line, "error en lista_enums");
+        yyerrok;
+        yyclearin;
+    }
+    | ENUM IDENTIFICADOR '{' lista_enumeradores '}' error ';' {
+        report_error("en declaEnum", @$.first_line, "error en lista_ids");
+        yyerrok;
+        yyclearin;
+    }
     ;
 
-IDENTIFICADOR_opt
+ids_opt
     : /* vacío */ { $$ = NULL; }
-    | IDENTIFICADOR {
-        Array* arr = createArray(10);
-        char* e = strdup($1);
-        insertElemArray(arr, e);
-        // agregar e a ts como var de tipo nomENum que puede tomar solo vals de los enumeradores del enum
-        $$ = arr;
+    | lista_ids { $$ = $1; }
+    | error {
+        report_error("en ids_opt", @$.first_line, "error en lista_ids");
+        yyerrok;
+        yyclearin;
     }
     ;
 
 lista_ids
-    : IDENTIFICADOR_opt
+    : IDENTIFICADOR {
+        Array* arr = createArray(10);
+        char* e = strdup($1);
+        insertElemArray(arr, e);
+        $$ = arr;
+    }
     | lista_ids ',' IDENTIFICADOR {
         char* e = strdup($3);
         insertElemArray($1, e);
@@ -247,7 +248,6 @@ lista_enumeradores
         Enumerador* em = crearEnumMember($3, valor);
         insertElemArray($1, em);
         $$ = $1;
-        // agregar e a ts como var const
     }
     | lista_enumeradores ',' IDENTIFICADOR '=' ENTERO {
         Enumerador* em = crearEnumMember($3, $5);
@@ -265,40 +265,60 @@ lista_enumeradores
         yyerrok;
         yyclearin;
     }
+    | lista_enumeradores ',' IDENTIFICADOR error ENTERO {
+        report_error("en lista_enumeradores", @$.first_line, "Valor asignado a enumerador incorrectamente, se esperaba '='");
+        yyerrok;
+        yyclearin;
+    }
     ;
 
 declaVarSimples
     : TIPO_DATO listaVarSimples ';' {
-        tipoDatoActual = strdup($1);
+        tipoDatoActual = $1;
         esConstante = 0; esExterno = 0; esUnsigned = 0;
     }
+    | TIPO_DATO '*' listaVarSimples ';' { // caso char*
+        if(strcmp($1, "char") == 0){
+            tipoDatoActual = "char*";
+            esConstante = 0; esExterno = 0; esUnsigned = 0;
+        } else {
+            report_error("en declaVarSimple", @$.first_line, "Tipo de dato no analizable");
+            yyerrok;
+            yyclearin;
+        }
+        
+    }
     | UNSIGNED TIPO_DATO listaVarSimples ';' {
-        tipoDatoActual = strdup($2);
+        tipoDatoActual = $2;
         esConstante = 0; esExterno = 0; esUnsigned = 1;
     }
     | CONST TIPO_DATO listaVarSimples ';' {
-        tipoDatoActual = strdup($2);
+        tipoDatoActual = $2;
         esConstante = 1; esExterno = 0; esUnsigned = 0;
     }
     | CONST UNSIGNED TIPO_DATO listaVarSimples ';' {
-        tipoDatoActual = strdup($3);
+        tipoDatoActual = $3;
         esConstante = 1; esExterno = 0; esUnsigned = 1;
     }
     | EXTERN TIPO_DATO listaVarSimples ';' {
-        tipoDatoActual = strdup($2);
+        tipoDatoActual = $2;
         esConstante = 0; esExterno = 1; esUnsigned = 0;
     }
     | EXTERN UNSIGNED TIPO_DATO listaVarSimples ';' {
-        tipoDatoActual = strdup($3);
+        tipoDatoActual = $3;
         esConstante = 0; esExterno = 1; esUnsigned = 1;
     }
     | EXTERN CONST TIPO_DATO listaVarSimples ';' {
-        tipoDatoActual = strdup($3);
+        tipoDatoActual = $3;
         esConstante = 1; esExterno = 1; esUnsigned = 0;
     }
     | EXTERN CONST UNSIGNED TIPO_DATO listaVarSimples ';' {
-        tipoDatoActual = strdup($4);
+        tipoDatoActual = $4;
         esConstante = 1; esExterno = 1; esUnsigned = 1;
+    }
+    | IDENTIFICADOR listaVarSimples ';' { //caso de var de un enum
+        tipoDatoActual = $1;
+        esConstante = 0; esExterno = 0; esUnsigned = 0;
     }
 
     | TIPO_DATO error ';' {
@@ -330,14 +350,14 @@ listaVarSimples
     ;
 
 unaVarSimple
-    : IDENTIFICADOR inicializacion_opt 
+    : IDENTIFICADOR inicializacion_opt // inicializacion necesito que guarde val de enum o tipoDato de la expresion
         {
-            char* nombre = strdup($1);
+            char* nombre = $1;
 
             Simbolo* v = crearSimbolo(
                 nombre,
                 VARIABLE,
-                strdup(tipoDatoActual),  // global
+                tipoDatoActual,  // global
                 @1.first_line,
                 nivelScope,
                 esConstante,
@@ -347,42 +367,54 @@ unaVarSimple
 
             if (!agregarSimbolo(tablaGral, v)) {
                 report_error("en varSimple", @$.first_line, "variable redeclarada en el mismo scope");
-            } 
-            // Si hay inicialización, verificamos compatibilidad
-            if ($2) {  // si la inicialización devuelve el tipo de la expresión
-                char* tipoExp = (char*) $2;
-                Simbolo* tipoReal = buscarSimbolo(tablaGral, v->tipoDato); //si es enum conseguira declaENum
-                // 1) CONSTANTE debe iniciarse con literal
-                // if (v->constante && !expresion_es_literal($2))
-                //     report_error("constVarSimple", @1.first_line,
-                //              "una constante debe inicializarse con literal");
-
-                // 2) UNSIGNED no acepta negativos
-                if (v->unsg && expresionNegativa($2))
-                    report_error("unsignedVarSimple", @1.first_line,
-                                "unsigned no puede tomar valores negativos");
-
-                // 3) ENUM: valor debe pertenecer al enum
-                if (tipoReal && tipoReal->clase == ENUM) {
-                    // Sólo aceptamos ENTERO literal en la expresión
-                    if (strcmp(tipoExp, "int") != 0) {
-                        report_error("inicializacion enum", @$.first_line,
-                                     "solo se puede asignar valores enteros a variables enum");
-                    } else {
-                        int valor = atoi(ultimaConstanteLeida);
-                        if (!valorPerteneceAlEnum(tipoReal, valor)) {
-                            report_error("inicializacion enum", @$.first_line,
-                                         "valor no pertenece a los valores del enum");
+                destruirSimbolo(v);
+            } else {
+                // Si hay inicialización, verificamos compatibilidad
+                if ($2) {  // si la inicialización devuelve el tipo de la expresión
+                    char* tipoExp = $2;
+                    if(v->tipoDato != "char" || v->tipoDato != "char*" || v->tipoDato != "int"
+                    || v->tipoDato != "double" || v->tipoDato != "float"){
+                        Simbolo* tipoEnum = buscarSimbolo(tablaGral, v->tipoDato); //si es enum conseguira declaENum
+                        if(tipoEnum){
+                            if(valorPerteneceAlEnum(tipoEnum, tipoExp)) {
+                                printf("Declaración válida de variable(s) <línea:%d>\n", @$.first_line);
+                            }
+                            else {
+                                report_error("en varSimple", @$.first_line, "tipo incompatible en asignacion");
+                                destruirSimbolo(tipoEnum);
+                                eliminarSimbolo(tablaGral, v);
+                                destruirSimbolo(v);
+                            }
+                        } else {
+                            report_error("en varSimple", @$.first_line, "tipo dato no declarado");
+                            eliminarSimbolo(tablaGral, v);
+                            destruirSimbolo(v);
+                        }
+                    } else { // no verifico const ni unsg para mas facil
+                        if(v->tipoDato == "char" || v->tipoDato == "char*" || v->tipoDato == "int"
+                        || v->tipoDato == "double" || v->tipoDato == "float") {
+                            if (!tiposCompatibles(v->tipoDato, tipoExp)) {
+                                report_error("en varSimple", @$.first_line, "tipo incompatible en asignacion");
+                                eliminarSimbolo(tablaGral, v);
+                                destruirSimbolo(v);
+                            } else {
+                                printf("Declaración válida de variable(s) <línea:%d>\n", @$.first_line);
+                            }
+                        } else {
+                            report_error("en varSimple", @$.first_line, "tipo dato no analizable");
+                            eliminarSimbolo(tablaGral, v);
+                            destruirSimbolo(v);
                         }
                     }
+                    
                 }
-                if (!tiposCompatibles(nuevo->tipoDato, tipoExp)) {
-                    report_error("en varSimple", @$.first_line, "tipo incompatible en asignacion");
-                } else {
-                    printf("Declaración válida de variable(s) <línea:%d>\n", @$.first_line);
-                }
-            }
+            } 
         }
+    | IDENTIFICADOR error {
+        report_error("en unaVarSimple", @$.first_line, "error en inicializacion de variable");
+        yyerrok;
+        yyclearin;
+    }
     ;
 
 inicializacion_opt
@@ -403,24 +435,27 @@ inicializacion_opt
 
 declaFuncion
     : TIPO_DATO IDENTIFICADOR '(' parametros_opt ')' cuerpoFuncion_opt {
+        tipoDatoActual = $1;
         Simbolo* s = crearSimbolo(
-            strdup($2),
+            $2,
             FUNCION,
-            strdup($1),
+            tipoDatoActual,
             @$.first_line,
             nivelScope,
             0, 0, 0
         );
         if (!agregarSimbolo(tablaGral, s)) {
             report_error("en declaFuncion", @$.first_line, "funcion redeclarada.");
-            free(s->tipoDato);
-            free(s);
+            destruirSimbolo(s);
         } else {
-            if ($4) {
+            if($4) {
                 s->miembros = $4;
                 s->cantMiembros = arraySize($4);
             }
-            printf("Declaración válida de función <línea:%d>\n", @$.first_line);
+            if($6) {
+                // verificar tipoDato retorno de cuerpoFuncion_opt con tipoDato funcion
+            }
+            // printf("Declaración válida de función <línea:%d>\n", @$.first_line);
         }
     }
 
@@ -439,26 +474,31 @@ declaFuncion
         yyerrok;
         yyclearin;
     }
-    | TIPO_DATO IDENTIFICADOR error '{' {
-        report_error("en declaFuncion", @$.first_line, "Firma de función inválida (ej. falta '(' o ')' o ';'). Recuperado hasta '{'");
-        yyerrok;
-        yyclearin;
-    }
     | TIPO_DATO IDENTIFICADOR '(' parametros_opt ')' error {
-        report_error("en declaFuncion", @$.first_line, "declaración de función incompleta, agregue ';' o cuerpo de función. Recuperado");
+        report_error("en declaFuncion", @$.first_line, "declaración de función incompleta, agregue ';' o cuerpo de función");
         yyerrok;
         yyclearin;
     }
     ;
 
 cuerpoFuncion_opt
-    : sentCompuesta
-    | ';'
+    : sentCompuesta { $$ = $1; }
+    | ';' { $$ = NULL; }
+    | error {
+        report_error("en declaFuncion", @$.first_line, "declaración de función incompleta, agregue ';' o cuerpo de función");
+        yyerrok;
+        yyclearin;
+    }
     ;
 
 parametros_opt
     : /* vacío */ { $$ = NULL; }
     | lista_parametros { $$ = $1; }
+    | error {
+        report_error("en parametros_opt", @$.first_line, "error en lista_parametros");
+        yyerrok;
+        yyclearin;
+    }
     ;
 
 lista_parametros
@@ -467,7 +507,7 @@ lista_parametros
         insertElemArray(arr, strdup($1)); // tipo del primer parámetro
         $$ = arr;
     }
-    | lista_parametros ',' parametro  {
+    | lista_parametros ',' parametro {
         insertElemArray($1, strdup($3));
         $$ = $1;
     }
@@ -477,21 +517,41 @@ lista_parametros
         yyerrok;
         yyclearin; /* descarta el token actual, evita loops de error */
     }
-    | lista_parametros ',' error {
-        report_error("en lista_parametros", @$.first_line, "Coma de más al final de la lista de parámetros o parámetro mal formado.");
-        yyerrok;
-        yyclearin;
-    }
     ;
 
 parametro
-    : TIPO_DATO IDENTIFICADOR { $$ = strdup($1); }
-    | CONST TIPO_DATO IDENTIFICADOR { $$ = strdup($2); }
+    : TIPO_DATO IDENTIFICADOR { 
+        Simbolo* v = crearSimbolo(
+                $2,
+                VARIABLE,
+                $1,
+                @1.first_line,
+                nivelScope,
+                0,
+                0,
+                0
+            );
+        $$ = $1; 
+    }
+    | CONST TIPO_DATO IDENTIFICADOR { 
+        $$ = $2; 
+    }
+    | UNSIGNED TIPO_DATO IDENTIFICADOR { 
+        $$ = $2; 
+    }
+    | CONST UNSIGNED TIPO_DATO IDENTIFICADOR { 
+        $$ = $3; 
+    }
     ;
 
 sentencias_opt
     : /* vacío */
     | sentencias_opt sentencia
+    | sentencias_opt error {
+        report_error("en sentencias_opt", @$.first_line, "sentencia invalida");
+        yyerrok;
+        yyclearin;
+    }
     ;
 
 sentencia
@@ -506,8 +566,8 @@ sentencia
     | sentSalto
         { printf("Se leyó una sentSalto(return) <linea:%d>\n", @1.first_line); }
     
-    | error ';' {
-        report_error("en sentencia", @$.first_line, "Error en sentencia. Recuperado hasta ';'");
+    | error {
+        report_error("en sentencia", @$.first_line, "Error en sentencia");
         yyerrok;
         yyclearin;
     }
@@ -528,8 +588,13 @@ sentCompuesta
         yyerrok;
         yyclearin;
     }
-    | '{' error '}' {
-        report_error("en bloque", @$.first_line, "Error dentro de bloque. Recuperado hasta '}'");
+    | '{' error sentencias_opt '}' {
+        report_error("en bloque declaraciones_opt", @$.first_line, "Error dentro de bloque. Recuperado hasta '}'");
+        yyerrok;
+        yyclearin;
+    }
+    | '{' declaraciones_opt error '}' {
+        report_error("en bloque sentencias_opt", @$.first_line, "Error dentro de bloque. Recuperado hasta '}'");
         yyerrok;
         yyclearin;
     }
@@ -539,12 +604,18 @@ sentExpresion
     : expresion_opt ';' 
         {
             // Ejemplo: si expresion_opt fue un identificador usado, verificar si está declarado
+            $$ = $1
             validarExpresion($1, @$.first_line);
         }
     | ';'
 
     | expresion_opt error {
         report_error("en sentExpresion", @$.first_line, "Expresión incompleta, se esperaba ';'");
+        yyerrok;
+        yyclearin;
+    }
+    | error {
+        report_error("en sentExpresion", @$.first_line, "agregue expresion o ';'");
         yyerrok;
         yyclearin;
     }
@@ -560,7 +631,7 @@ sentSeleccion
         { reportCerrarScope("(IF)"); }
      opSent
 
-    | IF error sentencia opSent {
+    | IF '(' error ')' sentencia opSent {
         report_error("en sentSeleccion", @$.first_line, "Estructura de 'if' incompleta, error en condición. Recuperado.");
         yyerrok;
         yyclearin;
@@ -580,6 +651,11 @@ sentSeleccion
         yyerrok;
         yyclearin;
     }
+    | IF '(' expresion ')' sentencia error {
+        report_error("en sentSeleccion", @$.first_line, "opcion invalida al terminar IF");
+        yyerrok;
+        yyclearin;
+    }
     ;
 
 opSent
@@ -589,8 +665,8 @@ opSent
      sentencia
         { reportCerrarScope("(ELSE)"); }
 
-    | ELSE error ';' {
-        report_error("en opSent", @$.first_line, "Sentencia de 'else' inválida. Recuperado hasta ';'");
+    | ELSE error {
+        report_error("en opSent", @$.first_line, "Sentencia de 'else' inválida");
         yyerrok;
         yyclearin;
     }
@@ -616,8 +692,8 @@ sentIteracion
      sentencia
         { reportCerrarScope("(FOR)"); }
 
-    | WHILE error sentencia {
-        report_error("en sentIteracion", @$.first_line, "Estructura de 'while' mal formada (ej. falta '(' o ')'). Recuperado.");
+    | WHILE '(' error ')'  sentencia {
+        report_error("en sentIteracion", @$.first_line, "Expresion en 'while' mal formada");
         yyerrok;
         yyclearin;
     }
@@ -636,17 +712,17 @@ sentIteracion
         yyerrok;
         yyclearin;
     }
-    | FOR error sentencia {
+    | FOR error expresion_opt ';' expresion_opt ';' expresion_opt ')' sentencia {
         report_error("en sentIteracion", @$.first_line, "Sintaxis de 'for' inválida. Recuperado.");
         yyerrok;
         yyclearin;
     }
-    | FOR '(' expresion_opt expresion_opt ';' expresion_opt ')' sentencia {
+    | FOR '(' expresion_opt error expresion_opt ';' expresion_opt ')' sentencia {
         report_error("en sentIteracion", @$.first_line, "Sintaxis de 'for' inválida: Falta el primer ';' de separación.");
         yyerrok;
         yyclearin;
     }
-    | FOR '(' expresion_opt ';' expresion_opt expresion_opt ')' sentencia {
+    | FOR '(' expresion_opt ';' expresion_opt error expresion_opt ')' sentencia {
         report_error("en sentIteracion", @$.first_line, "Sintaxis de 'for' inválida: Falta el segundo ';' de separación.");
         yyerrok;
         yyclearin;
@@ -658,6 +734,21 @@ sentIteracion
     }
     | FOR '(' expresion_opt ';' expresion_opt ';' expresion_opt ')' error {
         report_error("en sentIteracion", @$.first_line, "Falta la sentencia para el bucle FOR.");
+        yyerrok;
+        yyclearin;
+    }
+    | FOR '(' error ';' expresion_opt ';' expresion_opt ')' sentencia {
+        report_error("en sentIteracion", @$.first_line, "expresion en FOR incorrecta");
+        yyerrok;
+        yyclearin;
+    }
+    | FOR '(' expresion_opt ';' error ';' expresion_opt ')' sentencia {
+        report_error("en sentIteracion", @$.first_line, "expresion en FOR incorrecta");
+        yyerrok;
+        yyclearin;
+    }
+    | FOR '(' expresion_opt ';' expresion_opt ';' error ')' sentencia {
+        report_error("en sentIteracion", @$.first_line, "expresion en FOR incorrecta");
         yyerrok;
         yyclearin;
     }
@@ -683,68 +774,75 @@ sentSalto
     ;
 
 expresion_opt
-    : /* vacío */ { $$ = strdup("error"); }
-    | expresion { $$ = $1; }
+    : /* vacío */ { $$ = NULL; }
+    | expresion { $$ = $1; } // conseguir resultado de la expresion
+    | error {
+        report_error("en expresion_opt", @$.first_line, "expresion invalida");
+        yyerrok;
+        yyclearin;
+    }
     ; 
 
 expresion
     : expCondicional { $$ = $1; }
-    | expUnaria opAsignacion expresion {
-        if(esIdentificador($1)) {
-            char* key = $1;
-            Simbolo* s = buscarSimbolo(tablaGral, key);
-            if(s) {
-                if(s->constante) {
-                    report_error("en expresion", @$.first_line, "no se pueden modificar constantes");
-                    $$ = strdup("error");
-                }
-                else {
-                    if (strcmp($2, "=") == 0) {
-                        Simbolo* tipoReal = buscarSimbolo(tablaGral, s->tipoDato);
-                        if (tipoReal && tipoReal->clase == ENUM) {
-                            if (strcmp($3, "int") != 0) {
-                                report_error("en expresion", @$.first_line,
-                                            "solo se puede asignar valores enteros a variables enum");
-                            } else {
-                                if (!valorPerteneceAlEnum(s, $3)) {
-                                    report_error("en expresion", @1.first_line,
-                                                "valor no pertenece al enum");
-                                    $$ = strdup("error");
-                                }
-                            }    
-                        }
-                        if (s->unsg && expresionNegativa($3)) {
-                            report_error("en expresion", @1.first_line,
-                                    "unsigned no puede recibir valor negativo");
-                            $$ = strdup("error");
-                        }
-                        // Verificamos compatibilidad de tipos
-                        if (!tiposCompatibles($1, $3)) {
-                            report_error("en expresion", @$.first_line, "tipos incompatibles");
-                            $$ = strdup("error");
+    | IDENTIFICADOR opAsignacion expresion {
+        char* key = $1;
+        Simbolo* s = buscarSimbolo(tablaGral, key);
+        if(s) {
+            if(s->constante) {
+                report_error("en expresion", @$.first_line, "no se pueden modificar vars constantes");
+                $$ = strdup("error");
+            }
+            else {
+                if (strcmp($2, "=") == 0) {
+                    Simbolo* tipoReal = buscarSimbolo(tablaGral, s->tipoDato); // tipoDato podria ser el nom de un enum donde se declaro esta variable
+                    if (tipoReal && tipoReal->clase == ENUM) {
+                        if (strcmp($3, "int") != 0) {
+                            report_error("en expresion", @$.first_line,
+                                        "solo se puede asignar valores enteros a variables enum");
                         } else {
-                            $$ = strdup($1);
-                        }
+                            if (!valorPerteneceAlEnum(s, $3)) {
+                                report_error("en expresion", @1.first_line,
+                                            "valor no pertenece al enum");
+                                $$ = strdup("error");
+                            }
+                        }    
+                    }
+                    if (s->unsg && expresionNegativa($3)) {
+                        report_error("en expresion", @1.first_line,
+                                "unsigned no puede recibir valor negativo");
+                        $$ = strdup("error");
+                    }
+                    // Verificamos compatibilidad de tipos
+                    if (!tiposCompatibles($1, $3)) {
+                        report_error("en expresion", @$.first_line, "tipos incompatibles");
+                        $$ = strdup("error");
                     } else {
-                        // Operadores compuestos +=, -=, etc. Solo tipoCompatibles para simplicidad
-                        if (!tiposCompatibles($1, $3)) {
-                            report_error("en expresion", @$.first_line, "tipos incompatibles");
-                            $$ = strdup("error");
-                        } else {
-                            $$ = strdup($1);
-                        }
+                        $$ = strdup($1);
+                    }
+                } else {
+                    // Operadores compuestos +=, -=, etc. Solo tipoCompatibles para simplicidad
+                    if (!tiposCompatibles($1, $3)) {
+                        report_error("en expresion", @$.first_line, "tipos incompatibles");
+                        $$ = strdup("error");
+                    } else {
+                        $$ = strdup($1);
                     }
                 }
             }
+        } else {
+            report_error("en expresion", @1.first_line,
+                "variable no definida");
+            $$ = strdup("error");
         }
     }
 
-    | expUnaria opAsignacion error {
+    | IDENTIFICADOR opAsignacion error {
         report_error("en expresion", @$.first_line, "Expresión inválida después del operador de asignación.");
         yyerrok;
         yyclearin;
     }
-    | expUnaria opAsignacion {
+    | IDENTIFICADOR opAsignacion {
         report_error("en expresion", @$.first_line, "Falta la expresión a asignar después del operador.");
         yyerrok;
         yyclearin;

@@ -11,7 +11,7 @@
 typedef enum {
     VARIABLE,
     ENUM,
-    FUNCION
+    FUNCION,
 } SimboloTipo;
 
 typedef struct {
@@ -32,7 +32,7 @@ typedef struct {
 typedef struct {
     char* nombre;
     int valor; // guardo valor del enumerador en la lst enumeradores de declaEnum
-} Enumerador;
+} Enumerador; // me sirve tmb para guardar parametros de funciones
 
 typedef struct {
     Array* simbolos;  // array de simbolos
@@ -58,7 +58,9 @@ Simbolo* crearSimbolo (
     int constante,
     int externo,
     int unsg ) ;
+void destruirSimbolo(Simbolo* s);
 int agregarSimbolo(TablaScopes* tabla, Simbolo* nuevo);
+void eliminarSimbolo(TablaScopes* tabla, Simbolo* sym);
 Simbolo* buscarSimbolo(TablaScopes* tabla, char* key);
 Scope* scopeActual(TablaScopes* tabla);
 Enumerador* crearEnumMember(char* nombre, int valor);

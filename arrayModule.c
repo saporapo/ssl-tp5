@@ -34,6 +34,18 @@ void insertElemArray(Array* a, arrItem valor) {
     a->len++;
 }
 
+arrItem removeElemArray(Array* a, int indice) {
+    arrItem elemR = a->elem[indice];
+
+    // acomodar elementos
+    for (int i = indice; i < a->len - 1; i++) {
+        a->elem[i] = a->elem[i + 1];
+    }
+    a->len--;
+
+    return elemR;
+}
+
 arrItem findElemArray(Array* a, int indice) {
     return a->elem[indice];
 }

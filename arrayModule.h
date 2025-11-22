@@ -17,6 +17,7 @@ typedef struct {
 Array* createArray(int capacidad_inicial);
 void destroyArray(Array* a);
 void insertElemArray(Array* a, arrItem valor);
+arrItem removeElemArray(Array* a, int indice);
 arrItem findElemArray(Array* a, int indice);
 int arraySize(Array* a);
 

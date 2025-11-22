@@ -29,8 +29,7 @@ Scope* crearScope() {
 void destruirScope(Scope* s) {
     for (int i = 0; i < arraySize(s->simbolos); i++) {
         Simbolo* sym = (Simbolo*) findElemArray(s->simbolos, i);
-        if (sym->miembros) destroyArray(sym->miembros); // destruir array miembros dentro de cada simbolo q lo tenga
-        free(sym);
+        destruirSimbolo(sym);
     }
     destroyArray(s->simbolos);
     free(s);
@@ -74,6 +73,13 @@ Simbolo* crearSimbolo (
         return s;
 }
 
+void destruirSimbolo(Simbolo* s){
+    free(s->key);
+    free(s->tipoDato);
+    destroyArray(s->miembros);
+    free(s);
+}
+
 // 1 (se agrego) o 0 duplicado
 int agregarSimbolo(TablaScopes* tabla, Simbolo* nuevo) {
     Scope* actual = scopeActual(tabla);
@@ -91,6 +97,17 @@ int agregarSimbolo(TablaScopes* tabla, Simbolo* nuevo) {
     insertElemArray(actual->simbolos, nuevo);
     actual->cantidad++;
     return 1;
+}
+
+void eliminarSimbolo(TablaScopes* tabla, Simbolo* sym) {
+    Scope* actual = scopeActual(tabla);
+    for(int i = 0; i < arraySize(actual->simbolos); i++) {
+        Simbolo* s = (Simbolo*) findElemArray(actual->simbolos, i);
+        if (strcmp(s->key, sym->key) == 0) {
+            removeElemArray(actual->simbolos, i);
+            actual->cantidad--;
+        }
+    }
 }
 
 //Buscar símbolo en todos los scopes (de adentro hacia afuera)
