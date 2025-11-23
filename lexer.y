@@ -49,9 +49,8 @@ void reportCerrarScope(const char *msg) {
 // tipos compatibles para asignaciones
 int tiposCompatibles(char* t1, char* t2) {
     if (!t1 || !t2) return 0;
-    if (strcmp(t2, "error") == 0) return 0;
 
-    if (strcmp(t1, t2) == 0) return 1;
+    if (strcmp(t1, t2) == 0) return 1; //char*
 
     // conversiones simples
     if ((strcmp(t1,"double")==0 && strcmp(t2,"int")==0) ||
@@ -97,9 +96,10 @@ int valorPerteneceAlEnum(Simbolo* enumSimbolo, char* valor) {
 %token IGUALDAD DIFERENTE AND OR MAYOR_IGUAL MENOR_IGUAL
 
 // type es para definir el tipo de dato que almacena un no terminal
-%type <cadena> expresion expresion_opt expCondicional expOr expAnd expIgualdad expRelacional expAditiva expMultiplicativa expUnaria expPostfijo expPrimaria
-%type <cadena> inicializacion_opt parametro
-%type <arr> lista_ids lista_enumeradores ids_opt parametros_opt
+%type <cadena> expresion expresion_opt inicializacion_opt parametro argumento operUnario expUnaria
+%type <dval> expOr expAnd expIgualdad expRelacional expAditiva expMultiplicativa  
+%type <dval> expCondicional 
+%type <arr> lista_ids lista_enumeradores ids_opt parametros_opt expPrimaria listaArgumentos expPostfijo
 
 /* Precedencia y asociatividad */
 %left OR
@@ -1004,8 +1004,12 @@ expMultiplicativa
     ;
 
 expUnaria
-    : operUnario expUnaria %prec UNARIO {
-        char* t = $2; char s = $1;
+    : expPostfijo {
+        Array* arr = $1;
+        $$ = arr->elem[0];
+    }
+    | operUnario expPostfijo %prec UNARIO {
+        char* s = $1; char
         if (s == '-') {
             if (strcmp(t,"int")==0 || strcmp(t,"float")==0 || strcmp(t,"double")==0) $$ = strdup("negativo");
             else { report_error("en expUnaria", @$.first_line, "aplicacion '-' sobre tipo no numerico"); $$ = strdup("error"); }
@@ -1022,17 +1026,16 @@ expUnaria
         }
         free(t); free(s);
     }
-    | expPostfijo { $$ = $1; }
-    | INCREMENTO expUnaria  { 
-        char* t = $2; /* ++x */ 
+    | INCREMENTO expPrimaria { 
+        Array* arr = $2; /* ++x */ 
         if (strcmp(t,"int")==0 || strcmp(t,"float")==0 || strcmp(t,"double")==0) { 
             $$=strdup(t);
         } 
         else { report_error("en expUnaria", @$.first_line, "aplicacion '++' sobre tipo no numerico"); $$ = strdup("error"); }
         free(t); 
     }
-    | DECREMENTO expUnaria { 
-        char* t = $2; /* ++x */ 
+    | DECREMENTO expPrimaria { 
+        Array* arr = $2; /* --x */ 
         if (strcmp(t,"int")==0 || strcmp(t,"float")==0 || strcmp(t,"double")==0) { 
             $$=strdup(t);
         } 
@@ -1058,11 +1061,11 @@ expUnaria
     ;
     
 operUnario 
-    : '-' { $$ = '-'; }  /* signo negativo */
-    | '!' { $$ = '!'; }  /* NOT lógico */
+    : '-' { $$ = "-"; }  /* signo negativo */
+    | '!' { $$ = "!"; }  /* NOT lógico */
     ;
 
-expPostfijo
+expPostfijo // si arr tiene 1 elem es tipoDato identificador o tipoDato funcion
     : expPrimaria { $$ = $1; }
     | IDENTIFICADOR '(' listaArgumentos ')' { // acepta x ej: int x = dobleDe(2);
         /* Llamada a función: verificar existencia y compatibilidad de args */
@@ -1072,90 +1075,133 @@ expPostfijo
             int cantArgs = $3? arraySize($3) : 0;
             int cantArgsFun = func->cantMiembros;
             // verifico cantArgs y compatibilidad de tipoDato var con el que retorna func
-            if(cantArgs == cantArgsFun && tiposCompatibles(tipoDatoActual, func->tipoDato)) {
+            if(cantArgs == cantArgsFun) {
                 // verifico que los args correspondan al tipo pedido en los parametros de func
                 int ok = 1;
                 for (int i = 0; i < cantArgsFunc; i++) {
                     char* tipoArg = findElemArray($3, i);
                     char* tipoParam  = findElemArray(fun->miembros, i);
 
-                    if (!tiposCompatibles(tipoActual, tipoParam)) {
+                    if (!tiposCompatibles(tipoArg, tipoParam)) {
                         ok = 0;
+                        free(tipoArg);
+                        free(tipoParam);
                         break;
                     }
                 }
                 if (!ok) {
                     report_error("en llamada a funcion", @1.first_line,
                                     "tipos incompatibles en los argumentos");
-                    $$ = strdup("error");
+                    free(funcKey);
+                    destruirSimbolo(func);
+                    $$ = NULL;
                 } else {
                     // La llamada es válida: retorna el tipo de la función
-                    $$ = strdup(fun->tipoDato);
+                    Array* arr = createArray(2);
+                    char* e = strdup(fun->tipoDato);
+                    insertElemArray(arr, e);
+                    $$ = arr;
                 }
             }
             else {
-                report_error("en expPostfijo", @$.first_line, "cantidad de argumentos en funcion invalido o tipos incompatibles");
-                $$ = strdup("error");
+                report_error("en expPostfijo", @$.first_line, "cantidad de argumentos en funcion invalido");
+                free(funcKey);
+                destruirSimbolo(func);
+                $$ = NULL;
             }
         }
         else {
             report_error("en expPostfijo", @$.first_line, "funcion no declarada o identificador no es funcion");
-            $$ = strdup("error");
+            free(funcKey);
+            destruirSimbolo(func);
+            $$ = NULL;
         }
-        free(funcKey); destroyArray($3);
     }
-    | expPostfijo INCREMENTO /* post ++ */ { 
-        char* t = $1;
-        if (strcmp(t,"int")==0 || strcmp(t,"float")==0 || strcmp(t,"double")==0) { 
-            $$=strdup(t);
+    | expPrimaria INCREMENTO /* post ++ (+1 == +int)*/ { 
+        Array* arr = $1;
+        if (tiposCompatibles(arr->elem[0], "int")) { //revisar en tiposCompatibles los tipo enum
+            if(arraySize(arr) > 1) { // si es un identificador, no tengo su valor guardado
+                arr->elem[1]++;
+            }
+            $$ = arr;
         } 
-        else { report_error("en expUnaria", @$.first_line, "aplicacion '++' sobre tipo no numerico"); $$ = strdup("error"); }
-        free(t); 
+        else { 
+            report_error("en expPostfijo", @$.first_line, "aplicacion '++' sobre tipo no numerico"); 
+            destroyArray(arr);
+            $$ = NULL;
+        }
     }
-    | expPostfijo DECREMENTO /* post -- */ { 
-        char* t = $1;
-        if (strcmp(t,"int")==0 || strcmp(t,"float")==0 || strcmp(t,"double")==0) { 
-            $$=strdup(t);
+    | expPrimaria DECREMENTO /* post -- */ { 
+        Array* arr = $1;
+        if (tiposCompatibles(arr->elem[0], "int")) { //revisar en tiposCompatibles los tipo enum
+            if(arraySize(arr) > 1) { // si es un identificador, no tengo su valor guardado
+                arr->elem[1]--;
+            }
+            $$ = arr;
         } 
-        else { report_error("en expUnaria", @$.first_line, "aplicacion '--' sobre tipo no numerico"); $$ = strdup("error"); }
-        free(t); 
+        else { 
+            report_error("en expPostfijo", @$.first_line, "aplicacion '--' sobre tipo no numerico"); 
+            destroyArray(arr);
+            $$ = NULL;
+        }
     }
 
-    | expPostfijo '(' listaArgumentos error {
+    | IDENTIFICADOR '(' listaArgumentos error {
         report_error("en expPostfijo", @$.first_line, "Falta el paréntesis de cierre ')' en la llamada a función.");
         yyerrok;
         yyclearin;
     }
-    | expPostfijo error listaArgumentos ')' {
+    | IDENTIFICADOR error listaArgumentos ')' {
         report_error("en expPostfijo", @$.first_line, "Falta el paréntesis de apertura '(' en la llamada a función.");
         yyerrok;
         yyclearin;
     }
     ;
 
-listaArgumentos
+listaArgumentos // hare argumento simples en funciones, solo identificadores/string/numerico
     : /* vacío */ { $$ = NULL; }
-    | expresion {
+    | argumento {
         Array* arr = createArray(10);
-        char* e = strdup($1);
+        char* e = $1;
         insertElemArray(arr, e);
         $$ = arr;
     }
-    | listaArgumentos ',' expresion {
-        char* e = strdup($3);
+    | listaArgumentos ',' argumento {
+        char* e = $3;
         insertElemArray($1, e);
         $$ = $1;
     }
 
-    | listaArgumentos error expresion {
+    | listaArgumentos error argumento {
         report_error("en listaArgumentos", @$.first_line, "Argumentos separados incorrectamente, se esperaba ','");
         yyerrok;
         yyclearin;
     }
     | listaArgumentos ',' error {
-        report_error("en listaArgumentos", @$.first_line, "Coma de más al final de la lista de argumentos.");
+        report_error("en listaArgumentos", @$.first_line, "error en expPrimaria");
         yyerrok;
         yyclearin;
+    }
+    ;
+
+argumento
+    : IDENTIFICADOR { 
+        Simbolo* s = buscarSimbolo(tablaGral, $1);
+        if (!s) {
+            report_error("en argumento", @$.first_line, "variable no declarada");
+            destruirSimbolo(s);
+            $$ = NULL;
+        } else {
+            $$ = s->tipoDato; //puede haber problemas si es var de un enum!!!!
+        }
+    }
+    | ENTERO { $$ = strdup("int"); }
+    | NUMERO { $$ = strdup("double"); }
+    | CARACTER { $$ = strdup("char"); }
+    | CADENA { $$ = strdup("char*"); }
+    | error {
+        report_error("en argumento", @$.first_line, "no analizo funciones de orden superior"); 
+        YYABORT;
     }
     ;
 
@@ -1164,16 +1210,55 @@ expPrimaria
         Simbolo* s = buscarSimbolo(tablaGral, $1);
         if (!s) {
             report_error("en expPrimaria", @$.first_line, "variable no declarada");
-            $$ = strdup("error");
+            destruirSimbolo(s);
+            $$ = NULL;
         } else {
-            $$ = strdup(s->tipoDato);
+            Array* arr = createArray(2);
+            char* e = strdup(s->tipoDato); //puede haber problemas si es var de un enum!!!!
+            insertElemArray(arr, e);
+            $$ = arr;
         }
     }
-    | ENTERO { $$ = strdup("int"); }
-    | NUMERO { $$ = strdup("float"); }
-    | CARACTER { $$ = strdup("char"); }
-    | CADENA { $$ = strdup("char*"); }
-    | '(' expresion_opt ')' { $$ = $2 ? strdup($2) : ( report_error("en expPrimaria", @$.first_line, "problema con expresion"); strdup("error"); ); } //podria ser para x ej: 2*(2+2)
+    | ENTERO { 
+        Array* arr = createArray(2); 
+        int e = $1;
+        insertElemArray(arr, "int"); // el 1er elem debe ser el tipoDato
+        insertElemArray(arr, e);
+        $$ = arr; 
+    }
+    | NUMERO { 
+        Array* arr = createArray(2); 
+        double e = $1; 
+        insertElemArray(arr, "double");
+        insertElemArray(arr, e);
+        $$ = arr; 
+    }
+    | CARACTER { 
+        Array* arr = createArray(2); 
+        char e = $1;
+        insertElemArray(arr, "char");
+        insertElemArray(arr, e);
+        $$ = arr; 
+    }
+    | CADENA { 
+        Array* arr = createArray(2); 
+        char* e = $1;
+        insertElemArray(arr, "char*");
+        insertElemArray(arr, e);
+        $$ = arr; 
+    }
+    | '(' expOr ')' { // desde expOr puedo resultadoCuenta o resultadoBooleano
+        if($2) {
+            Array* arr = createArray(2); 
+            double e = $2;
+            insertElemArray(arr, "double");
+            insertElemArray(arr, e);
+            $$ = arr;
+        } else {
+            report_error("en expPrimaria", @$.first_line, "problema con expresion numerica"); 
+            YYABORT; //podria ser para x ej: 2*(2+2)
+        } 
+    }
     ;
 
 
