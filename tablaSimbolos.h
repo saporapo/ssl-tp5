@@ -24,9 +24,10 @@ typedef struct {
     int externo;            // 1 externo o 0 no
     int unsg;               // 1 unsigned o 0 signed
 
-    Array* miembros;       // funcion: array con el tipoDato parametros
-                          // enum: array con valores del enum
-    int cantMiembros;     // cantParametros funcion o cantVals enum
+    Array* miembros;    // funcion: array con el tipoDato parametros
+                        // enum: array con valores del enum
+                        // var: excepto char* guardo el valor para calculos
+    int cantMiembros;   // cantParametros funcion o cantVals enum
 } Simbolo;
 
 typedef struct {
