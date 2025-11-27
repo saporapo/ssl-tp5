@@ -156,16 +156,6 @@ enum {
     return IDENTIFICADOR;
 }
 
-"?"  { 
-    printf("Operador: %s\n", yytext); 
-    actualizarLocationsColumnas();
-    return '?'; 
-}
-":"  { 
-    printf("Operador: %s\n", yytext);
-    actualizarLocationsColumnas();
-    return ':'; 
-}
 "++" { 
     printf("Operador: %s\n", yytext); 
     actualizarLocationsColumnas();
