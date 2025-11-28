@@ -49,18 +49,6 @@ typedef struct {
 
 } Simbolo;
 
-
-
-typedef struct {
-
-    char* nombre;
-
-    int valor; // guardo valor del enumerador de la lista_enumeradores de declaEnum
-
-} Enumerador;
-
-
-
 typedef struct {
 
     char* nombre;

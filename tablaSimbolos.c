@@ -1,31 +1,17 @@
 #include <stdio.h>
-
 #include <stdlib.h>
-
 #include <string.h>
-
 #include "tablaSimbolos.h"
 
-
-
 TablaScopes* initTS() {
-
     TablaScopes* ts = (TablaScopes*) malloc(sizeof(TablaScopes));
-
     ts->ambitos = createStack();
-
     abrirScope(ts); // Scope global
-
     return ts;
-
 }
 
-
-
 void destroyTS(TablaScopes* tabla) {
-
     while (!isEmpty(tabla->ambitos)) {
-
         Scope* s = (Scope*) pop(tabla->ambitos);
 
         destruirScope(s);
