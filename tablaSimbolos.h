@@ -42,12 +42,9 @@ typedef struct {
 
     int nivelScope;         // scope declaracion
 
-
-
     Array* miembros;    // funcion: array con el tipoDato parametros
 
                         // enum: array con valores del enum
-
     int cantMiembros;   // cantParametros funcion o cantVals enum
 
 } Simbolo;
@@ -67,12 +64,13 @@ typedef struct {
 typedef struct {
 
     char* nombre;
+    int valor; // guardo valor del enumerador de la lista_enumeradores de declaEnum
+} Enumerador;
 
+typedef struct {
+    char* nombre;
     char* tipo;
-
 } Parametro; // guardo parametro de lista_parametros de declaFuncion para cuerpoFun_opt
-
-
 
 typedef struct {
 
@@ -113,9 +111,7 @@ Simbolo* crearSimbolo (
     char* tipoDato,
 
     int lineaDeclaracion,
-
     int nivelScope ) ;
-
 void destruirSimbolo(Simbolo* s);
 
 int agregarSimbolo(TablaScopes* tabla, Simbolo* nuevo);
@@ -127,9 +123,6 @@ Simbolo* buscarSimbolo(TablaScopes* tabla, char* key);
 Scope* scopeActual(TablaScopes* tabla);
 
 Enumerador* crearEnumMember(char* nombre, int valor);
-
 Parametro* crearParametro(char* nombre, char* tipo);
-
-
 
 #endif

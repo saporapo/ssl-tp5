@@ -76,6 +76,7 @@ void reportCerrarScope(const char *msg) {
 
 }
 
+}
 int tiposCompatibles(char* t1, char* t2) {
 
     if (t1 == NULL || t2 == NULL) {
@@ -93,6 +94,13 @@ int tiposCompatibles(char* t1, char* t2) {
     }
 
 
+    if (t1 == NULL || t2 == NULL) {
+        return 0;
+    }
+
+    else if (strcmp(t1, t2) == 0) {
+        return 1;
+    }
 
     // conversiones simples
 
@@ -145,6 +153,30 @@ int tiposCompatibles(char* t1, char* t2) {
     }
 
 
+    else if (strcmp(t1, "double") == 0) {
+        return (strcmp(t2, "int") == 0 ||
+                strcmp(t2, "float") == 0 ||
+                strcmp(t2, "char") == 0);
+    }
+
+    else if (strcmp(t1, "float") == 0) {
+        return (strcmp(t2, "int") == 0 ||
+                strcmp(t2, "float") == 0 ||
+                strcmp(t2, "char") == 0);
+    }
+
+    else if (strcmp(t1, "int") == 0) {
+        return (strcmp(t2, "int") == 0 ||
+                strcmp(t2, "char") == 0);
+    }
+
+    Simbolo* enumTipo = buscarSimbolo(tablaGral, t1);
+    if (enumTipo != NULL && enumTipo->clase == ENUM) {
+        if (valorPerteneceAlEnum(enumTipo, t2)) // t2 = IDENTIFICADOR o "k" de enum
+            return 1;
+
+        return 0; // no pertenece al enum
+    }
 
     return 0;
 
@@ -180,6 +212,20 @@ int valorPerteneceAlEnum(Simbolo* enumSimbolo, char* valor) {
 
     
 
+    if(esNumeroEntero(valor)){
+        for (int i = 0; i < arraySize(enumSimbolo->miembros); i++) {
+            Enumerador* enumVal = (Enumerador*) findElemArray(enumSimbolo->miembros, i);
+            if (enumVal->valor == valor)
+                return 1;
+        }
+    }
+
+    for (int i = 0; i < arraySize(enumSimbolo->miembros); i++) {
+        Enumerador* enumVal = (Enumerador*) findElemArray(enumSimbolo->miembros, i);
+        if (strcmp(enumVal->nombre, valor) == 0)
+            return 1;
+    }
+    
     return 0;
 
 }
@@ -251,6 +297,40 @@ TipoExpr* crearExpr(char* tipo, int esLvalue) {
 %}
 
 
+}
+int esNumeroEntero(const char* s) {
+    if (!s || *s == '\0')
+        return 0;
+    for (int i = 0; s[i]; i++) {
+        if (!isdigit(s[i]) && !(i == 0 && s[i] == '-'))
+            return 0;
+    }
+    return 1;
+}
+int esTipoBasico(const char* t) {
+    return strcmp(t, "int") == 0 ||
+           strcmp(t, "char") == 0 ||
+           strcmp(t, "char*") == 0 ||
+           strcmp(t, "float") == 0 ||
+           strcmp(t, "double") == 0;
+}
+char* tipoResultadoNumerico(char* a, char* b) {
+    if (!strcmp(a,"double") || !strcmp(b,"double")) return "double";
+    if (!strcmp(a,"float")  || !strcmp(b,"float"))  return "float";
+    return "int";
+}
+
+typedef struct TipoExpr {
+    char* tipo;   // "int", "double", "float", "char", "char*", enum (identificador, "k")
+    int esLvalue; // 1 si se puede asignar (identificador), 0 en otros casos
+} TipoExpr;
+TipoExpr* crearExpr(char* tipo, int esLvalue) {
+    TipoExpr* e = malloc(sizeof(TipoExpr));
+    e->tipo = tipo;
+    e->esLvalue = esLvalue;
+    return e;
+}
+%}
 
 %define parse.error verbose // mensajes de error detallados
 
@@ -279,6 +359,10 @@ TipoExpr* crearExpr(char* tipo, int esLvalue) {
 }
 
 
+    Parametro* p;
+    Simbolo* s;
+    TipoExpr* expr;
+}
 
 // token es para definir el tipo de dato que almacena un terminal
 
@@ -294,6 +378,7 @@ TipoExpr* crearExpr(char* tipo, int esLvalue) {
 
 %token <cadena> ENUM
 
+%token <cadena> ENUM
 %token INCREMENTO DECREMENTO MAS_IGUAL MENOS_IGUAL DIV_IGUAL POR_IGUAL
 
 %token IGUALDAD DIFERENTE AND OR MAYOR_IGUAL MENOR_IGUAL
@@ -318,6 +403,14 @@ TipoExpr* crearExpr(char* tipo, int esLvalue) {
 
 
 
+
+%type <s> declaEnum declaFuncion declaVarSimple
+%type <arr> ids_opt lista_ids lista_enumeradores
+%type <arr> parametros_opt lista_parametros
+%type <cadena> cuerpoFuncion_opt sentencias_opt sentencia
+%type <cadena> sentCompuesta sentSeleccion sentSalto
+%type <cadena> tipo_opt
+%type <p> parametro
 
 
 /* Precedencia y asociatividad */
@@ -367,11 +460,13 @@ declaraciones_opt
     ;
 
 
+    ;
 
 declaracion
 
     : declaVarSimple
 
+    : declaVarSimple
     | declaFuncion
 
     | declaEnum
@@ -380,6 +475,8 @@ declaracion
 
         report_error("en declaracion", @$.first_line, "error sintactico de declaración.");
 
+    | error ';' {
+        report_error("en declaracion", @$.first_line, "error sintactico de declaración.");
         yyerrok;
 
     }
@@ -395,25 +492,35 @@ declaracion
     ;
 
 
+    }
+    | error '}' { // para la terminacion de declaFuncion q no es ';'
+        report_error("en declaracion", @$.first_line, "error sintactico de declaración.");
+        yyerrok;
+    }
+    ;
 
 declaEnum //me parece que un enum es constante
 
     : ENUM IDENTIFICADOR '{' lista_enumeradores '}' {
 
+    : ENUM IDENTIFICADOR '{' lista_enumeradores '}' {
         char* nombre = $2; // obligo a enum a tener key para que sea menos complejo
 
         Simbolo* s = crearSimbolo(nombre, ENUM, strdup("enum"), @$.first_line, 0);
 
+        Simbolo* s = crearSimbolo(nombre, ENUM, strdup("enum"), @$.first_line, 0);
         // si esta declarado en el scope actual --> redeclarado
 
         if (!agregarSimbolo(tablaGral, s)) {
 
             report_error("en declaEnum", @$.first_line, "error semantico, enum redeclarado.");
 
+            report_error("en declaEnum", @$.first_line, "error semantico, enum redeclarado.");
             destruirSimbolo(s);
 
             $$ = NULL;
 
+            $$ = NULL;
         } else {
 
             /* lista_enumeradores devuelve Array* de Enumerador* con nom y val del elemEnum*/
@@ -499,6 +606,7 @@ ids_opt
     ;
 
 
+    ;
 
 lista_ids
 
@@ -524,7 +632,12 @@ lista_ids
 
     }
 
+    }
     ;
+
+
+
+
 
 
 
@@ -588,28 +701,41 @@ declaVarSimple
 
         if(tipo && esTipoBasico(tipo)) {
 
+    }
+    ;
+
+declaVarSimple
+    : tipo_opt IDENTIFICADOR {
+        char* tipo = $1;
+        if(tipo && esTipoBasico(tipo)) {
             Simbolo* v = crearSimbolo(
 
                 $2,
 
+                $2,
                 VARIABLE,
 
                 tipo,
 
+                tipo,
                 @1.first_line,
 
                 0
 
             );
 
+                0
+            );
             if (!agregarSimbolo(tablaGral, v)) {
 
                 report_error("en declaVarSimple", @$.first_line, "error semantico, variable redeclarada.");
 
+                report_error("en declaVarSimple", @$.first_line, "error semantico, variable redeclarada.");
                 destruirSimbolo(v);
 
                 $$ = NULL;
 
+                $$ = NULL;
             } else {
 
                 printf("Declaración válida de varSimple <línea:%d>\n", @$.first_line);
@@ -654,6 +780,27 @@ declaVarSimple
 
                 }
 
+                printf("Declaración válida de varSimple <línea:%d>\n", @$.first_line);
+                $$ = v;        
+            }
+        } else { // tiene que ser identificador enum
+            Simbolo* s = buscarSimbolo(tablaGral, tipo);
+            if(s && s->clase == ENUM) {
+                Simbolo* v = crearSimbolo(
+                    $2,
+                    VARIABLE,
+                    tipo,
+                    @1.first_line,
+                    0
+                );
+                if (!agregarSimbolo(tablaGral, v)) {
+                    report_error("en declaVarSimple", @$.first_line, "error semantico, variable redeclarada.");
+                    destruirSimbolo(v);
+                    $$ = NULL;
+                } else {
+                    printf("Declaración válida de varSimple <línea:%d>\n", @$.first_line);
+                    $$ = v;        
+                }
             } else {
 
                 report_error("en declaVarSimple", @$.first_line, "error semantico, tipoDato no definido");
@@ -762,6 +909,7 @@ declaFuncion
 
     : TIPO_DATO IDENTIFICADOR '(' parametros_opt ')' {
 
+    : TIPO_DATO IDENTIFICADOR '(' parametros_opt ')' {
         Simbolo* s = crearSimbolo(
 
             $2,
@@ -770,20 +918,24 @@ declaFuncion
 
             $1,
 
+            $1,
             @$.first_line,
 
             0
 
+            0
         );
 
         if (!agregarSimbolo(tablaGral, s)) {
 
             report_error("en declaFuncion", @$.first_line, "error semantico, funcion redeclarada.");
 
+            report_error("en declaFuncion", @$.first_line, "error semantico, funcion redeclarada.");
             destruirSimbolo(s);
 
             $$ = NULL;
 
+            $$ = NULL;
         } else {
 
             s->miembros = $4;
@@ -791,6 +943,8 @@ declaFuncion
             s->cantMiembros = $4? arraySize($4) : 0;
 
 
+            s->miembros = $4;
+            s->cantMiembros = $4? arraySize($4) : 0;
 
             printf("Declaración válida de funcion <línea:%d>\n", @$.first_line);
 
@@ -846,6 +1000,32 @@ declaFuncion
 
         report_error("en declaFuncion", @$.first_line, "error sintactico de declaración de funcion.");
 
+            $$ = s;
+        }
+    } 
+        cuerpoFuncion_opt {
+            Simbolo* f = $$;
+            char* tipoDeclarado = $1;
+            char* tipoRetornado = $6;
+            if (tipoRetornado == NULL && strcmp(tipoDeclarado, "void") != 0) {
+                report_error("en función", @$.first_line,
+                                "error semantico, falta retorno en funcion");
+                eliminarSimbolo(tablaGral, f);
+                destruirSimbolo(f);
+                free(tipoDeclarado);
+                free(tipoRetornado);
+            } else if (tipoRetornado != NULL &&
+                        !tiposCompatibles(tipoDeclarado, tipoRetornado)) {
+                report_error("en función", @$.first_line,
+                                "error semantico, Tipo de retorno incompatible.");
+                eliminarSimbolo(tablaGral, f);
+                destruirSimbolo(f);
+                free(tipoDeclarado);
+                free(tipoRetornado);
+            }
+    }
+    | error ';' {
+        report_error("en declaFuncion", @$.first_line, "error sintactico de declaración de funcion.");
         yyerrok;
 
     }
@@ -863,6 +1043,9 @@ cuerpoFuncion_opt
     ;
 
 
+    : sentCompuesta { $$ = 1; }
+    | ';'
+    ;
 
 parametros_opt
 
@@ -873,6 +1056,8 @@ parametros_opt
     ;
 
 
+    | lista_parametros { $$ = $1; } // array*
+    ;
 
 lista_parametros
 
@@ -882,6 +1067,7 @@ lista_parametros
 
         if ($1 != NULL) insertElemArray(arr, $1);
 
+        if ($1 != NULL) insertElemArray(arr, $1);
         $$ = arr;
 
     }
@@ -890,10 +1076,12 @@ lista_parametros
 
         if ($3 != NULL) insertElemArray($1, $3);
 
+        if ($3 != NULL) insertElemArray($1, $3);
         $$ = $1;
 
     }
 
+    }
     ;
 
 
@@ -910,12 +1098,18 @@ parametro
 
             $$ = NULL;
 
+        if (strcmp($1, "void") == 0) {
+            report_error("en parámetro", @1.first_line,
+                            "Un parámetro no puede ser de tipo 'void'.");
+            $$ = NULL;
         } else {
 
             Parametro* p = crearParametro($2, $1);
 
             $$ = p;
 
+            Parametro* p = crearParametro($2, $1);
+            $$ = p;
         }
 
     }
@@ -943,6 +1137,12 @@ parametro
     ;
 
 
+            report_error("en parámetro", @1.first_line,
+                            "no analizo punteros, solo char*.");
+            $$ = NULL;
+        }
+    }
+    ;
 
 sentencias_opt
 
@@ -970,18 +1170,22 @@ sentencia
 
         { $$ = $1; printf("Se leyó una sentCompuesta <linea:%d>\n", @1.first_line); }
 
+        { $$ = $1; printf("Se leyó una sentCompuesta <linea:%d>\n", @1.first_line); }
     | sentExpresion
 
         { $$ = NULL; printf("Se leyó una sentExpresion <linea:%d>\n", @1.first_line); }
 
+        { $$ = NULL; printf("Se leyó una sentExpresion <linea:%d>\n", @1.first_line); }
     | sentSeleccion
 
         { $$ = $1; printf("Se leyó una sentSeleccion(if, else) <linea:%d>\n", @1.first_line); }
 
+        { $$ = $1; printf("Se leyó una sentSeleccion(if, else) <linea:%d>\n", @1.first_line); }
     | sentIteracion
 
         { $$ = NULL; printf("Se leyó una sentIteracion(while, for) <linea:%d>\n", @1.first_line); }
 
+        { $$ = NULL; printf("Se leyó una sentIteracion(while, for) <linea:%d>\n", @1.first_line); }
     | sentSalto
 
         { $$ = $1; printf("Se leyó una sentSalto(return) <linea:%d>\n", @1.first_line); }
@@ -990,6 +1194,9 @@ sentencia
 
         report_error("en sentencia", @$.first_line, "error sintactico de sentencia.");
 
+        { $$ = $1; printf("Se leyó una sentSalto(return) <linea:%d>\n", @1.first_line); }
+    | error ';' {
+        report_error("en sentencia", @$.first_line, "error sintactico de sentencia.");
         yyerrok;
 
     }
@@ -1012,6 +1219,10 @@ sentCompuesta
 
                         "Error sintáctico dentro de bloque.");
 
+        { reportCerrarScope("sentCompuesta"); $$ = $3;}
+    | '{' error '}' {
+        report_error("en sentCompuesta", @$.first_line,
+                        "Error sintáctico dentro de bloque.");
         yyerrok;
 
         reportCerrarScope("sentCompuesta"); $$ = NULL;
@@ -1024,6 +1235,11 @@ sentCompuesta
 
 sentExpresion // sentencia sin llave no tiene scope
 
+        reportCerrarScope("sentCompuesta"); $$ = NULL;
+    }
+    ;
+
+sentExpresion // sentencia sin llave no tiene scope
     : expresion_opt ';' 
 
         {
@@ -1040,6 +1256,8 @@ sentExpresion // sentencia sin llave no tiene scope
 
         report_error("en sentExpresión", @$.first_line, "sintaxis de expresión inválida");
 
+    | error ';' {
+        report_error("en sentExpresión", @$.first_line, "sintaxis de expresión inválida");
         yyerrok;
 
     }
@@ -1047,6 +1265,8 @@ sentExpresion // sentencia sin llave no tiene scope
     ;
 
 
+    }
+    ;
 
 sentSeleccion
 
@@ -1060,6 +1280,11 @@ sentSeleccion
 
     | IF '(' expresion ')' 
 
+    : IF '(' error ')' sentencia opSent {
+          report_error("en IF", @$.first_line, "condición inválida, error sintactico");
+          yyerrok; $$ = NULL;
+    }
+    | IF '(' expresion ')' 
         { // Verificar variables usadas en la condición
 
             validarExpresion($3, @$.first_line);
@@ -1077,6 +1302,7 @@ sentSeleccion
     ;
 
 
+    ;
 
 opSent
 
@@ -1120,6 +1346,10 @@ sentIteracion
 
     }
 
+    | WHILE '(' error ')' sentencia {
+          report_error("en WHILE", @$.first_line, "condición inválida, error sintactico");
+          yyerrok;
+    }
     | FOR '(' expresion_opt ';' expresion_opt ';' expresion_opt ')'
 
         {
@@ -1144,6 +1374,8 @@ sentIteracion
 
         report_error("en FOR", @$.first_line, "estructura sintactica del FOR inválida");
 
+    | FOR '(' error ')' sentencia {
+        report_error("en FOR", @$.first_line, "estructura sintactica del FOR inválida");
         yyerrok;
 
     }
@@ -1178,6 +1410,22 @@ sentSalto // sentencia sin llave no tiene scope
 
         $$ = NULL;
 
+    }
+    ;
+
+sentSalto // sentencia sin llave no tiene scope
+    : RETURN expresion_opt ';' {
+        if ($2 == NULL) {
+            // return sin valor → tipo = void
+            $$ = strdup("void");
+        } else {
+            // la expresión devuelve un tipo
+            $$ = $2->tipo;
+        }
+    }
+    | error ';' {
+        report_error("en sentSalto", @$.first_line, "sintaxis de expresión inválida");
+        $$ = NULL;
         yyerrok;
 
     }
@@ -1195,6 +1443,7 @@ expresion_opt
     ; 
 
 
+    ; 
 
 expresion
 
@@ -1204,6 +1453,7 @@ expresion
 
         Simbolo* s = buscarSimbolo(tablaGral, $1);
 
+        Simbolo* s = buscarSimbolo(tablaGral, $1);
         if(s && s->clase == VARIABLE) {
 
             if (!tiposCompatibles(s->tipoDato, $3->tipo)) {
@@ -1242,6 +1492,24 @@ expresion
 
         report_error("en expresión", @$.first_line, "sintaxis de expresión inválida");
 
+            if (!tiposCompatibles(s->tipoDato, $3->tipo)) {
+                report_error("en asignación", @$.first_line,
+                        "error semantico, tipo incompatible en asignación.");
+                destruirSimbolo(s);
+                $$ = NULL;
+            }
+
+            // tipo de la expresión asignación es el del LHS
+            $$ = crearExpr(s->tipoDato, 0);
+        } else {
+            report_error("en expresion", @1.first_line,
+                "error semantico, identificador no declarado");
+            destruirSimbolo(s);
+            $$ = NULL;
+        }
+    }
+    | error {
+        report_error("en expresión", @$.first_line, "sintaxis de expresión inválida");
         yyerrok;
 
         $$ = NULL;
@@ -1251,6 +1519,9 @@ expresion
     ;
 
 
+        $$ = NULL;
+    }
+    ;
 
 opAsignacion
 
@@ -1280,6 +1551,9 @@ expOr // saque if-in-line por complejidad
 
             $$ = NULL;
 
+        if (!esNumerico($1->tipo) || !esNumerico($3->tipo)) {
+            report_error("en OR", @$.first_line, "error semantico, operador lógico solo admite tipos numéricos.");
+            $$ = NULL;
         } else {
 
             $$ = crearExpr("int", 0);
@@ -1291,6 +1565,10 @@ expOr // saque if-in-line por complejidad
     ;
 
 
+            $$ = crearExpr("int", 0);
+        }
+    }
+    ;
 
 expAnd
 
@@ -1304,6 +1582,9 @@ expAnd
 
             $$ = NULL;
 
+        if (!esNumerico($1->tipo) || !esNumerico($3->tipo)) {
+            report_error("en AND", @$.first_line, "error semantico, operador lógico solo admite tipos numéricos.");
+            $$ = NULL;
         } else {
 
             $$ = crearExpr("int", 0);
@@ -1315,6 +1596,10 @@ expAnd
     ;
 
 
+            $$ = crearExpr("int", 0);
+        }
+    }
+    ;
 
 expIgualdad
 
@@ -1336,6 +1621,13 @@ expIgualdad
 
     }
 
+        if (!tiposCompatibles($1->tipo, $3->tipo) && !tiposCompatibles($3->tipo, $1->tipo)) {
+            report_error("en '=='", @$.first_line, "tipos incompatibles en comparación.");
+            $$ = NULL;
+        } else {
+            $$ = crearExpr("int", 0);
+        }
+    }
     | expIgualdad DIFERENTE expRelacional {
 
         if (tiposCompatibles($1->tipo, $3->tipo) || tiposCompatibles($3->tipo, $1->tipo)) {
@@ -1355,6 +1647,14 @@ expIgualdad
     ;
 
 
+        if (tiposCompatibles($1->tipo, $3->tipo) || tiposCompatibles($3->tipo, $1->tipo)) {
+            report_error("en '!='", @$.first_line, "tipos incompatibles en comparación.");
+            $$ = NULL;
+        } else {
+            $$ = crearExpr("int", 0);
+        }
+    }
+    ;
 
 expRelacional
 
@@ -1376,6 +1676,13 @@ expRelacional
 
     }
 
+        if (!esNumerico($1->tipo) || !esNumerico($3->tipo)) {
+            report_error("en MAYOR_IGUAL", @$.first_line, "error semantico, comparacion solo admite tipos numéricos.");
+            $$ = NULL;
+        } else {
+            $$ = crearExpr("int", 0);
+        }
+    }
     | expRelacional '>' expAditiva {
 
         if (!esNumerico($1->tipo) || !esNumerico($3->tipo)) {
@@ -1392,6 +1699,13 @@ expRelacional
 
     }
 
+        if (!esNumerico($1->tipo) || !esNumerico($3->tipo)) {
+            report_error("en MAYOR", @$.first_line, "error semantico, comparacion solo admite tipos numéricos.");
+            $$ = NULL;
+        } else {
+            $$ = crearExpr("int", 0);
+        }
+    }
     | expRelacional MENOR_IGUAL expAditiva {
 
         if (!esNumerico($1->tipo) || !esNumerico($3->tipo)) {
@@ -1408,6 +1722,13 @@ expRelacional
 
     }
 
+        if (!esNumerico($1->tipo) || !esNumerico($3->tipo)) {
+            report_error("en MENOR_IGUAL", @$.first_line, "error semantico, comparacion solo admite tipos numéricos.");
+            $$ = NULL;
+        } else {
+            $$ = crearExpr("int", 0);
+        }
+    }
     | expRelacional '<' expAditiva {
 
         if (!esNumerico($1->tipo) || !esNumerico($3->tipo)) {
@@ -1427,6 +1748,14 @@ expRelacional
     ;
 
 
+        if (!esNumerico($1->tipo) || !esNumerico($3->tipo)) {
+            report_error("en MENOR", @$.first_line, "error semantico, comparacion solo admite tipos numéricos.");
+            $$ = NULL;
+        } else {
+            $$ = crearExpr("int", 0);
+        }
+    }
+    ;
 
 expAditiva
 
@@ -1448,6 +1777,13 @@ expAditiva
 
     }
 
+        if (!esNumerico($1->tipo) || !esNumerico($3->tipo)) {
+            report_error("+", @$.first_line, "error semantico, solo suma numérica permitida.");
+            $$ = NULL;
+        } else {
+            $$ = crearExpr(tipoResultadoNumerico($1->tipo, $3->tipo), 0);
+        }
+    }
     | expAditiva '-' expMultiplicativa {
 
         if (!esNumerico($1->tipo) || !esNumerico($3->tipo)) {
@@ -1467,6 +1803,14 @@ expAditiva
     ;
 
 
+        if (!esNumerico($1->tipo) || !esNumerico($3->tipo)) {
+            report_error("-", @$.first_line, "error semantico, solo resta numérica permitida.");
+            $$ = NULL;
+        } else {
+            $$ = crearExpr(tipoResultadoNumerico($1->tipo, $3->tipo), 0);
+        }
+    }
+    ;
 
 expMultiplicativa 
 
@@ -1510,6 +1854,24 @@ expMultiplicativa
 
 expUnaria
 
+        if (!esNumerico($1->tipo) || !esNumerico($3->tipo)) {
+            report_error("*", @$.first_line, "error semantico, solo multiplicacion numérica permitida.");
+            $$ = NULL;
+        } else {
+            $$ = crearExpr("double", 0);
+        }
+    }
+    | expMultiplicativa '/' expUnaria { 
+        if (!esNumerico($1->tipo) || !esNumerico($3->tipo)) {
+            report_error("/", @$.first_line, "error semantico, solo division numérica permitida.");
+            $$ = NULL;
+        } else {
+            $$ = crearExpr("double", 0);
+        }
+    }
+    ;
+
+expUnaria
     : expPostfijo { $$ = $1; }
 
     | operUnario expPostfijo %prec UNARIO {
@@ -1530,6 +1892,14 @@ expUnaria
 
     }
 
+        if (!esNumerico($2->tipo)) {
+            report_error("unario", @$.first_line, "error semantico, solo unario en numerico permitido.");
+            $$ = NULL;
+        } else {
+            if()
+            $$ = crearExpr(tipoResultadoNumerico("int", $2->tipo), 1);
+        }
+    }
     | INCREMENTO expPrimaria { /* ++x */ 
 
         if (!esNumerico($2->tipo)) {
@@ -1576,6 +1946,8 @@ operUnario
 
 
 
+
+
 expPostfijo
 
     : expPrimaria { $$ = $1; }
@@ -1584,10 +1956,13 @@ expPostfijo
 
     }
 
+    | IDENTIFICADOR '(' listaArgumentos ')' {
+    }
     | expPrimaria INCREMENTO /* post ++ (+1 == +int)*/ { 
 
     }
 
+    }
     | expPrimaria DECREMENTO /* post -- */ { 
 
     }
@@ -1598,6 +1973,10 @@ expPostfijo
 
 listaArgumentos // hare argumentos simples en funciones, solo identificadores/string/numerico
 
+    }
+    ;
+
+listaArgumentos // hare argumentos simples en funciones, solo identificadores/string/numerico
     : /* vacío */ { $$ = NULL; }
 
     | argumento {
@@ -1625,6 +2004,8 @@ listaArgumentos // hare argumentos simples en funciones, solo identificadores/st
     ;
 
 
+    }
+    ;
 
 argumento // no analizo funciones de orden superior
 
@@ -1650,6 +2031,7 @@ expPrimaria
 
     }
 
+    }
     | ENTERO { 
 
     }
@@ -1679,6 +2061,13 @@ expPrimaria
 %%
 
 
+    }
+    | '(' expOr ')' { 
+    }
+    ;
+
+
+%%
 
 /* yyerror: se usa cuando Bison no sabe cómo recuperar;
 

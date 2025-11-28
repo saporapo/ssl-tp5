@@ -1,0 +1,609 @@
+expOr OR expAnd {
+        Array* a = $1; Array* b = $3; Array* r = createArray(2); 
+        char* tipoA = a->elem[0]; char* tipoB = b->elem[0];
+        if (tiposCompatibles(tipoA, "int") && tiposCompatibles(tipoB, "int")) { 
+            insertElemArray(r, "int");
+            if(arraySize(a) != 1 && arraySize(b) != 1) { // tipoDato con val numerico
+                double p = a->elem[1]; double q = b->elem[1];
+                int val = p || q;
+                insertElemArray(r, val);
+            }
+            $$ = r; 
+        } else {
+            if(tipoA == "void" || tipoA == "char*" || tipoB == "void" || tipoB == "char*") {
+                report_error("en expOr", @$.first_line, "tipo no numerico");
+                free(tipoA); free(tipoB);
+                destroyArray(a); destroyArray(b); destroyArray(r);
+                YYABORT;
+            } else { // es enum
+                double p = a->elem[1]; double q = b->elem[1];
+                int val = p || q;
+                insertElemArray(r, val);
+                $$ = r; 
+            }
+        }
+    }
+
+expAnd AND expIgualdad {
+        Array* a = $1; Array* b = $3; Array* r = createArray(2); 
+        char* tipoA = a->elem[0]; char* tipoB = b->elem[0];
+        if (tiposCompatibles(tipoA, "int") && tiposCompatibles(tipoB, "int")) { 
+            insertElemArray(r, "int");
+            if(arraySize(a) != 1 && arraySize(b) != 1) { // tipoDato con val numerico
+                double p = a->elem[1]; double q = b->elem[1];
+                int val = p && q;
+                insertElemArray(r, val);
+            }
+            $$ = r; 
+        } else {
+            if(tipoA == "void" || tipoA == "char*" || tipoB == "void" || tipoB == "char*") {
+                report_error("en expAnd", @$.first_line, "tipo no numerico");
+                free(tipoA); free(tipoB);
+                destroyArray(a); destroyArray(b); destroyArray(r);
+                YYABORT;
+            } else { // es enum
+                double p = a->elem[1]; double q = b->elem[1];
+                int val = p && q;
+                insertElemArray(r, val);
+                $$ = r; 
+            }
+        }
+    }
+
+expIgualdad IGUALDAD expRelacional {
+        Array* a = $1; Array* b = $3; Array* r = createArray(2); 
+        char* tipoA = a->elem[0]; char* tipoB = b->elem[0];
+        if (tipoB != "void" && tipoA != "void") { 
+            insertElemArray(r, "int");
+            if(strcmp(tipoA, tipoB) == 0) { // cumplen igualdad de tipo
+                if(arraySize(a) != 1 && arraySize(b) != 1) { // tipoDato con val numerico
+                    double p = a->elem[1]; double q = b->elem[1];
+                    int val = p == q;
+                    insertElemArray(r, val);
+                }
+            } else {
+                insertElemArray(r, 0); // no cumplen igualdad
+            }
+            $$ = r; 
+        } else {
+            report_error("en expIgualdad", @$.first_line, "tipo no comparable");
+            free(tipoA); free(tipoB);
+            destroyArray(a); destroyArray(b); destroyArray(r);
+            YYABORT;
+        }
+    }
+
+expIgualdad DIFERENTE expRelacional {
+        Array* a = $1; Array* b = $3; Array* r = createArray(2); 
+        char* tipoA = a->elem[0]; char* tipoB = b->elem[0];
+        if (tipoB != "void" && tipoA != "void") { 
+            insertElemArray(r, "int");
+            if(strcmp(tipoA, tipoB) == 0) { // cumplen igualdad de tipo
+                if(arraySize(a) != 1 && arraySize(b) != 1) { // tipoDato con val numerico
+                    double p = a->elem[1]; double q = b->elem[1];
+                    int val = p != q;
+                    insertElemArray(r, val);
+                }
+            } else {
+                insertElemArray(r, 1); // son diferentes en tipo
+            }
+            $$ = r; 
+        } else {
+            report_error("en expIgualdad", @$.first_line, "tipo no comparable");
+            free(tipoA); free(tipoB);
+            destroyArray(a); destroyArray(b); destroyArray(r);
+            YYABORT;
+        }
+    }
+
+expRelacional
+    : expAditiva { $$ = $1; }
+    | expRelacional MAYOR_IGUAL expAditiva {
+        Array* a = $1; Array* b = $3; Array* r = createArray(2); 
+        char* tipoA = a->elem[0]; char* tipoB = b->elem[0];
+        if (tiposCompatibles(tipoA, "double") && tiposCompatibles(tipoB, "double")) { 
+            insertElemArray(r, "int");
+            if(arraySize(a) != 1 && arraySize(b) != 1) { // tipoDato con val numerico
+                double p = a->elem[1]; double q = b->elem[1];
+                int val = p >= q;
+                insertElemArray(r, val);
+            } 
+            $$ = r; 
+        } else { // es enum, puedo operar como int
+            if(tipoB != "void" || tipoA != "void" || tipoB != "char*" || tipoA != "char*") {
+                insertElemArray(r, "int");
+                double p = a->elem[1]; double q = b->elem[1];
+                int val = p >= q;
+                insertElemArray(r, val);
+                $$ = r; 
+            } else { // a y/o b es char* o void
+                report_error("en expRelacional", @$.first_line, "tipo no numerico");
+                free(tipoA); free(tipoB);
+                destroyArray(a); destroyArray(b); destroyArray(r);
+                YYABORT;
+            }
+        }
+    }
+    | expRelacional '>' expAditiva {
+        Array* a = $1; Array* b = $3; Array* r = createArray(2); 
+        char* tipoA = a->elem[0]; char* tipoB = b->elem[0];
+        if (tiposCompatibles(tipoA, "double") && tiposCompatibles(tipoB, "double")) { 
+            insertElemArray(r, "int");
+            if(arraySize(a) != 1 && arraySize(b) != 1) { // tipoDato con val numerico
+                double p = a->elem[1]; double q = b->elem[1];
+                int val = p > q;
+                insertElemArray(r, val);
+            } 
+            $$ = r; 
+        } else { // es enum, puedo operar como int
+            if(tipoB != "void" || tipoA != "void" || tipoB != "char*" || tipoA != "char*") {
+                insertElemArray(r, "int");
+                double p = a->elem[1]; double q = b->elem[1];
+                int val = p > q;
+                insertElemArray(r, val);
+                $$ = r; 
+            } else { // a y/o b es char* o void
+                report_error("en expRelacional", @$.first_line, "tipo no numerico");
+                free(tipoA); free(tipoB);
+                destroyArray(a); destroyArray(b); destroyArray(r);
+                YYABORT;
+            }
+        }
+    }
+    | expRelacional MENOR_IGUAL expAditiva {
+        Array* a = $1; Array* b = $3; Array* r = createArray(2); 
+        char* tipoA = a->elem[0]; char* tipoB = b->elem[0];
+        if (tiposCompatibles(tipoA, "double") && tiposCompatibles(tipoB, "double")) { 
+            insertElemArray(r, "int");
+            if(arraySize(a) != 1 && arraySize(b) != 1) { // tipoDato con val numerico
+                double p = a->elem[1]; double q = b->elem[1];
+                int val = p <= q;
+                insertElemArray(r, val);
+            } 
+            $$ = r; 
+        } else { // es enum, puedo operar como int
+            if(tipoB != "void" || tipoA != "void" || tipoB != "char*" || tipoA != "char*") {
+                insertElemArray(r, "int");
+                double p = a->elem[1]; double q = b->elem[1];
+                int val = p <= q;
+                insertElemArray(r, val);
+                $$ = r; 
+            } else { // a y/o b es char* o void
+                report_error("en expRelacional", @$.first_line, "tipo no numerico");
+                free(tipoA); free(tipoB);
+                destroyArray(a); destroyArray(b); destroyArray(r);
+                YYABORT;
+            }
+        }
+    }
+    | expRelacional '<' expAditiva {
+        Array* a = $1; Array* b = $3; Array* r = createArray(2); 
+        char* tipoA = a->elem[0]; char* tipoB = b->elem[0];
+        if (tiposCompatibles(tipoA, "double") && tiposCompatibles(tipoB, "double")) { 
+            insertElemArray(r, "int");
+            if(arraySize(a) != 1 && arraySize(b) != 1) { // tipoDato con val numerico
+                double p = a->elem[1]; double q = b->elem[1];
+                int val = p < q;
+                insertElemArray(r, val);
+            } 
+            $$ = r; 
+        } else { // es enum, puedo operar como int
+            if(tipoB != "void" || tipoA != "void" || tipoB != "char*" || tipoA != "char*") {
+                insertElemArray(r, "int");
+                double p = a->elem[1]; double q = b->elem[1];
+                int val = p < q;
+                insertElemArray(r, val);
+                $$ = r; 
+            } else { // a y/o b es char* o void
+                report_error("en expRelacional", @$.first_line, "tipo no numerico");
+                free(tipoA); free(tipoB);
+                destroyArray(a); destroyArray(b); destroyArray(r);
+                YYABORT;
+            }
+        }
+    }
+    ;
+
+expAditiva
+    : expMultiplicativa { $$ = $1; }
+    | expAditiva '+' expMultiplicativa {
+        Array* a = $1; Array* b = $3; Array* r = createArray(2); 
+        char* tipoA = a->elem[0]; char* tipoB = b->elem[0];
+        if (tiposCompatibles(tipoA, "double") && tiposCompatibles(tipoB, "double")) { 
+            insertElemArray(r, "double");
+            if(arraySize(a) != 1 && arraySize(b) != 1) { // tipoDato con val numerico
+                double p = a->elem[1]; double q = b->elem[1];
+                double val = p + q;
+                insertElemArray(r, val);
+            } 
+            $$ = r; 
+        } else { // es enum, puedo operar como int
+            if(tipoB != "void" || tipoA != "void" || tipoB != "char*" || tipoA != "char*") {
+                insertElemArray(r, "int");
+                double p = a->elem[1]; double q = b->elem[1];
+                double val = p + q;
+                insertElemArray(r, val);
+                $$ = r; 
+            } else { // a y/o b es char* o void
+                report_error("en expAditiva", @$.first_line, "tipo no numerico");
+                free(tipoA); free(tipoB);
+                destroyArray(a); destroyArray(b); destroyArray(r);
+                YYABORT;
+            }
+        }
+    }
+    | expAditiva '-' expMultiplicativa {
+        Array* a = $1; Array* b = $3; Array* r = createArray(2); 
+        char* tipoA = a->elem[0]; char* tipoB = b->elem[0];
+        if (tiposCompatibles(tipoA, "double") && tiposCompatibles(tipoB, "double")) { 
+            insertElemArray(r, "double");
+            if(arraySize(a) != 1 && arraySize(b) != 1) { // tipoDato con val numerico
+                double p = a->elem[1]; double q = b->elem[1];
+                double val = p - q;
+                insertElemArray(r, val);
+            } 
+            $$ = r; 
+        } else { // es enum, puedo operar como int
+            if(tipoB != "void" || tipoA != "void" || tipoB != "char*" || tipoA != "char*") {
+                insertElemArray(r, "int");
+                double p = a->elem[1]; double q = b->elem[1];
+                double val = p - q;
+                insertElemArray(r, val);
+                $$ = r; 
+            } else { // a y/o b es char* o void
+                report_error("en expAditiva", @$.first_line, "tipo no numerico");
+                free(tipoA); free(tipoB);
+                destroyArray(a); destroyArray(b); destroyArray(r);
+                YYABORT;
+            }
+        }
+    }
+    ;
+
+expMultiplicativa 
+    : expUnaria { $$ = $1; }
+    | expMultiplicativa '*' expUnaria {
+        Array* a = $1; Array* b = $3; Array* r = createArray(2); 
+        char* tipoA = a->elem[0]; char* tipoB = b->elem[0];
+        if (tiposCompatibles(tipoA, "double") && tiposCompatibles(tipoB, "double")) { 
+            insertElemArray(r, "double");
+            if(arraySize(a) != 1 && arraySize(b) != 1) { // tipoDato con val numerico
+                double p = a->elem[1]; double q = b->elem[1];
+                double val = p * q;
+                insertElemArray(r, val);
+            } 
+            $$ = r; 
+        } else { // es enum, puedo operar como int
+            if(tipoB != "void" || tipoA != "void" || tipoB != "char*" || tipoA != "char*") {
+                insertElemArray(r, "double");
+                double p = a->elem[1]; double q = b->elem[1];
+                double val = p * q;
+                insertElemArray(r, val);
+                $$ = r; 
+            } else { // a y/o b es char* o void
+                report_error("en expMultiplicativa", @$.first_line, "tipo no numerico");
+                free(tipoA); free(tipoB);
+                destroyArray(a); destroyArray(b); destroyArray(r);
+                YYABORT;
+            }
+        }
+    }
+    | expMultiplicativa '/' expUnaria { // revisar que b sea != 0, aunq solo si es val num
+        Array* a = $1; Array* b = $3; Array* r = createArray(2); 
+        char* tipoA = a->elem[0]; char* tipoB = b->elem[0];
+        if (tiposCompatibles(tipoA, "double") && tiposCompatibles(tipoB, "double")) { 
+            insertElemArray(r, "double");
+            if(arraySize(a) != 1 && arraySize(b) != 1) { // tipoDato con val numerico
+                double p = a->elem[1]; double q = b->elem[1];
+                if(q) {
+                    double val = p / q;
+                    insertElemArray(r, val);
+                    $$ = r;
+                } else {
+                    report_error("en expMultiplicativa", @$.first_line, "no se puede dividir por 0");
+                    free(tipoA); free(tipoB);
+                    destroyArray(a); destroyArray(b); destroyArray(r);
+                    YYABORT;
+                }
+            } 
+            $$ = r; 
+        } else { // es enum, puedo operar como int
+            if(tipoB != "void" || tipoA != "void" || tipoB != "char*" || tipoA != "char*") {
+                insertElemArray(r, "double");
+                double p = a->elem[1]; double q = b->elem[1];
+                if(q) {
+                    double val = p / q;
+                    insertElemArray(r, val);
+                    $$ = r;
+                } else {
+                    report_error("en expMultiplicativa", @$.first_line, "no se puede dividir por 0");
+                    free(tipoA); free(tipoB);
+                    destroyArray(a); destroyArray(b); destroyArray(r);
+                    YYABORT;
+                }
+            } else { // a y/o b es char* o void
+                report_error("en expMultiplicativa", @$.first_line, "tipo no numerico");
+                free(tipoA); free(tipoB);
+                destroyArray(a); destroyArray(b); destroyArray(r);
+                YYABORT;
+            }
+        }
+    }
+    ;
+
+expUnaria // devuelve un arr con tipoDato y val
+    : expPostfijo { $$ = $1; }
+    | operUnario expPostfijo %prec UNARIO {
+        char* oU = $1; Array* arr = $2;
+        char* tipoExpPost = arr->elem[0];
+        if (tiposCompatibles(tipoExpPost, "int")) { 
+            if(arraySize(arr) == 1) { // tipoDato funcion
+                $$ = arr;
+            } else { // tipoDato con val numerico
+                if(oU == "-") {
+                    arr->elem[0] = "double";
+                    arr->elem[1] = -(arr->elem[1]); 
+                }
+                if(oU == "!") {
+                    arr->elem[0] = "int";
+                    arr->elem[1] = !(arr->elem[1]); 
+                }
+                $$ = arr;
+            }
+        } else { // es char*, void o enum
+            if(tipoExpPost == "void" || tipoExpPost == "char*") {
+                report_error("en expUnaria", @$.first_line, "aplicacion unario en tipo no numerico");
+                free(oU);
+                destroyArray(arr);
+                free(tipoExpPost);
+                YYABORT;
+            } else { // es enum, puedo operar como int
+                if(oU == "-") {
+                    arr->elem[1] = -(arr->elem[1]); 
+                }
+                if(oU == "!") {
+                    arr->elem[1] = !(arr->elem[1]); 
+                }
+                $$ = arr; 
+            }
+        }
+    }
+    | INCREMENTO expPrimaria { /* ++x */ 
+        Array* arr = $1;
+        if (tiposCompatibles(arr->elem[0], "int")) { //revisar en tiposCompatibles los tipo enum
+            ++arr->elem[1];
+            $$ = arr;
+        } 
+        else { 
+            if(arr->elem[0] == "char*") {
+                report_error("en expPostfijo", @$.first_line, "aplicacion '++' sobre tipo no numerico"); 
+                destroyArray(arr);
+                YYABORT;
+            } else {
+                // si no es char* entonces es var de un enum, pero puedo app ++
+                ++arr->elem[1];
+                $$ = arr;
+            }
+        }
+    }
+    | DECREMENTO expPrimaria { /* --x */ 
+        Array* arr = $1;
+        if (tiposCompatibles(arr->elem[0], "int")) { //revisar en tiposCompatibles los tipo enum
+            --arr->elem[1];
+            $$ = arr;
+        } 
+        else { 
+            if(arr->elem[0] == "char*") {
+                report_error("en expPostfijo", @$.first_line, "aplicacion '--' sobre tipo no numerico"); 
+                destroyArray(arr);
+                YYABORT;
+            } else {
+                // si no es char* entonces es var de un enum, pero puedo app --
+                --arr->elem[1];
+                $$ = arr;
+            }
+        }
+    }
+    ;
+    
+operUnario 
+    : '-' { $$ = "-"; }  /* signo negativo */
+    | '!' { $$ = "!"; }  /* NOT lógico */
+    ;
+
+expPostfijo // si arr tiene 1 elem es tipoDato funcion o char*
+    : expPrimaria { $$ = $1; }
+    | IDENTIFICADOR '(' listaArgumentos ')' { // acepta x ej: int x = dobleDe(2);
+        /* Llamada a función: verificar existencia y compatibilidad de args */
+        char* funcKey = $1; 
+        Simbolo* func = buscarSimbolo(tablaGral, funcKey);
+        if (func && func->clase == FUNCION) {
+            int cantArgs = $3? arraySize($3) : 0;
+            int cantArgsFun = func->cantMiembros;
+            // verifico cantArgs y compatibilidad de tipoDato var con el que retorna func
+            if(cantArgs == cantArgsFun) {
+                // verifico que los args correspondan al tipo pedido en los parametros de func
+                int ok = 1;
+                for (int i = 0; i < cantArgsFunc; i++) {
+                    char* tipoArg = findElemArray($3, i);
+                    char* tipoParam  = findElemArray(fun->miembros, i);
+
+                    if (!tiposCompatibles(tipoArg, tipoParam)) {
+                        ok = 0;
+                        free(tipoArg);
+                        free(tipoParam);
+                        break;
+                    }
+                }
+                if (!ok) {
+                    report_error("en llamada a funcion", @1.first_line,
+                                    "tipos incompatibles en los argumentos");
+                    free(funcKey);
+                    destruirSimbolo(func);
+                    YYABORT;
+                } else {
+                    // La llamada es válida: retorna el tipo de la función
+                    Array* arr = createArray(2);
+                    char* e = func->tipoDato;
+                    insertElemArray(arr, e);
+                    $$ = arr;
+                }
+            }
+            else {
+                report_error("en expPostfijo", @$.first_line, "cantidad de argumentos en funcion invalido");
+                free(funcKey);
+                destruirSimbolo(func);
+                YYABORT;
+            }
+        }
+        else {
+            report_error("en expPostfijo", @$.first_line, "funcion no declarada o identificador no es funcion");
+            free(funcKey);
+            destruirSimbolo(func);
+            YYABORT;
+        }
+    }
+    | expPrimaria INCREMENTO /* post ++ (+1 == +int)*/ { 
+        Array* arr = $1;
+        if (tiposCompatibles(arr->elem[0], "int")) { //revisar en tiposCompatibles los tipo enum
+            arr->elem[1]++;
+            $$ = arr;
+        } 
+        else { 
+            if(arr->elem[0] == "char*") {
+                report_error("en expPostfijo", @$.first_line, "aplicacion '++' sobre tipo no numerico"); 
+                destroyArray(arr);
+                YYABORT;
+            } else {
+                // si no es char* entonces es var de un enum, pero puedo app ++
+                arr->elem[1]++;
+                $$ = arr;
+            }
+        }
+    }
+    | expPrimaria DECREMENTO /* post -- */ { 
+        Array* arr = $1;
+        if (tiposCompatibles(arr->elem[0], "int")) { //revisar en tiposCompatibles los tipo enum
+            arr->elem[1]--;
+            $$ = arr;
+        } 
+        else { 
+            if(arr->elem[0] == "char*") {
+                report_error("en expPostfijo", @$.first_line, "aplicacion '--' sobre tipo no numerico"); 
+                destroyArray(arr);
+                YYABORT;
+            } else {
+                // si no es char* entonces es var de un enum, pero puedo app --
+                arr->elem[1]--;
+                $$ = arr;
+            }
+        }
+    }
+    ;
+
+listaArgumentos // hare argumento simples en funciones, solo identificadores/string/numerico
+    : /* vacío */ { $$ = NULL; }
+    | argumento {
+        Array* arr = createArray(10);
+        char* e = $1;
+        insertElemArray(arr, e);
+        $$ = arr;
+    }
+    | listaArgumentos ',' argumento {
+        char* e = $3;
+        insertElemArray($1, e);
+        $$ = $1;
+    }
+    ;
+
+argumento // no analizo funciones de orden superior
+    : IDENTIFICADOR { 
+        Simbolo* s = buscarSimbolo(tablaGral, $1);
+        if (!s) {
+            report_error("en argumento", @$.first_line, "variable no declarada");
+            destruirSimbolo(s);
+            YYABORT;
+        } else {
+            $$ = s->tipoDato; //puede haber problemas si es var de un enum!!!!
+        }
+    }
+    | ENTERO { $$ = strdup("int"); }
+    | NUMERO { $$ = strdup("double"); }
+    | CARACTER { $$ = strdup("char"); }
+    | CADENA { $$ = strdup("char*"); }
+    ;
+
+expPrimaria
+    : IDENTIFICADOR {
+        Simbolo* s = buscarSimbolo(tablaGral, $1);
+        if (s && s->clase == VARIABLE) {
+            Array* arr = createArray(2);
+            char* e = strdup(s->tipoDato); //puede ser var de un enum
+            insertElemArray(arr, e);
+            if(e == "char*"){
+                $$ = arr;
+            } else {
+                Array* val = s->miembros; //variable: si es de tipo char* no guarda contenido en su arr
+                                        // si es de otro tipo -> tipo numerico -> guarda su val asignado en arr
+                if(s->cantMiembros == 0) {
+                    report_error("en expPrimaria", @$.first_line, "variable no iniciada con valor");
+                    destruirSimbolo(s);
+                    destroyArray(arr);
+                    destroyArray(val);
+                    free(e);
+                    YYABORT;
+                } else {
+                    insertElemArray(arr, val->elem[0]); //aunq venga de enum, tiene un valor int
+                    $$ = arr;
+                }
+            }
+        } else {
+            report_error("en expPrimaria", @$.first_line, "variable no declarada");
+            destruirSimbolo(s);
+            YYABORT;
+        }
+    }
+    | ENTERO { 
+        Array* arr = createArray(2); 
+        int e = $1;
+        insertElemArray(arr, "int"); // el 1er elem debe ser el tipoDato
+        insertElemArray(arr, e);
+        $$ = arr; 
+    }
+    | NUMERO { 
+        Array* arr = createArray(2); 
+        double e = $1; 
+        insertElemArray(arr, "double");
+        insertElemArray(arr, e);
+        $$ = arr; 
+    }
+    | CARACTER { 
+        Array* arr = createArray(2); 
+        char e = $1;
+        insertElemArray(arr, "char");
+        insertElemArray(arr, e);
+        $$ = arr; 
+    }
+    | CADENA { 
+        Array* arr = createArray(2); 
+        char* e = $1;
+        insertElemArray(arr, "char*");
+        $$ = arr; 
+    }
+    | '(' expOr ')' { // expOr debe tener retornar algo de tipo numerico
+        Array* arr = $2; 
+        char* tipoExp = arr->elem[0];
+        if(tiposCompatibles(tipoExp, "int")) {
+            $$ = arr;
+        } else {
+            if(tipoExp == "void" || tipoExp == "char*") {
+                report_error("en expPrimaria", @$.first_line, "tipo no numerico");
+                free(tipoExp);
+                destroyArray(arr);
+                YYABORT;
+            } else { // es enum
+                $$ = arr;
+            }
+        }
+    }
+    ;

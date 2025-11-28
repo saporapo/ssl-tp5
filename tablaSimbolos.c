@@ -109,9 +109,7 @@ Simbolo* crearSimbolo (
     char* tipoDato,
 
     int lineaDeclaracion,
-
     int nivelScope ) {
-
         Simbolo* s = (Simbolo*) malloc(sizeof(Simbolo));
 
         s->key = key;
@@ -123,7 +121,6 @@ Simbolo* crearSimbolo (
         s->lineaDeclaracion = lineaDeclaracion;
 
         s->nivelScope = nivelScope;
-
         s->miembros = createArray(50);
 
         s->cantMiembros = 0;
@@ -261,19 +258,11 @@ Enumerador* crearEnumMember(char* nombre, int valor) {
     m->valor = valor;
 
     return m;
-
 }
 
-
-
 Parametro* crearParametro(char* nombre, char* tipo) {
-
     Parametro* p = malloc(sizeof(Parametro));
-
     p->nombre = strdup(nombre);
-
     p->tipo = strdup(tipo);
-
     return p;
-
 }
