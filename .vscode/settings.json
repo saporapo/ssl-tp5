@@ -1,0 +1,6 @@
+{
+    "files.associations": {
+        "stackmodule.h": "c",
+        "arraymodule.h": "c"
+    }
+}

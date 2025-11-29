@@ -252,3 +252,10 @@ Parametro* crearParametro(char* nombre, char* tipo) {
     p->tipo = strdup(tipo);
     return p;
 }
+
+Expr* crearExpr(char* tipo, int esLvalue) {
+    Expr* e = malloc(sizeof(Expr));
+    e->tipo = tipo;
+    e->esLvalue = esLvalue;
+    return e;
+}
