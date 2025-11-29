@@ -146,7 +146,7 @@ enum {
     printf("Palabra reservada (enumerador): %s\n", yytext); 
     actualizarLocationsColumnas();
     yylval.cadena = strdup(yytext); 
-    return ENUMR;
+    return ENUMERADOR;
 }
 
 

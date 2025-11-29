@@ -5,8 +5,7 @@
 #include<stdio.h>
 #include<ctype.h>
 #include<string.h>
-
-#include "tablaSimbolos.h"
+#include<tablaSimbolos.h>
 
 extern int yylex();
 int yyerror(const char* s);
@@ -100,7 +99,7 @@ int tiposCompatibles(char* t1, char* t2) {
     }
 
     Simbolo* enumTipo = buscarSimbolo(tablaGral, t1); //caso asignarle identificador a un enum
-    if (enumTipo != NULL && enumTipo->clase == ENUMDR) {
+    if (enumTipo != NULL && enumTipo->clase == ENUMR) {
         if (valorPerteneceAlEnum(enumTipo, t2)) // t2 = IDENTIFICADOR o "k" de enum
             return 1;
 
@@ -137,7 +136,7 @@ int esNumerico(char* tipo) {
 
     // Enums es equivalente a int
     Simbolo* s = buscarSimbolo(tablaGral, tipo);
-    if (s && s->clase == ENUMDR)
+    if (s && s->clase == ENUMR)
         return 1;
 
     return 0;
@@ -147,6 +146,7 @@ int esNumerico(char* tipo) {
 
 %define parse.error verbose // mensajes de error detallados
 %locations // manejo de ubicaciones
+%code requires{#include<tablaSimbolos.h>}
 
 %union {
     int ival; // decimal, octal, hex
@@ -165,12 +165,12 @@ int esNumerico(char* tipo) {
 %token <cval> CARACTER
 %token <cadena> CADENA TIPO_DATO IDENTIFICADOR
 %token <cadena> RETURN FOR WHILE ELSE IF
-%token <cadena> ENUMR
+%token <cadena> ENUMERADOR
 %token INCREMENTO DECREMENTO MAS_IGUAL MENOS_IGUAL DIV_IGUAL POR_IGUAL
 %token IGUALDAD DIFERENTE AND OR MAYOR_IGUAL MENOR_IGUAL
 
 // type es para definir el tipo de dato que almacena un no terminal
-%type <s> declaEnum declaFuncion declaVarSimple
+%type <s> declaEnum declaVarSimple declaFuncion
 %type <arr> ids_opt lista_ids lista_enumeradores
 %type <cadena> tipo_opt cuerpoFuncion_opt opSent
 %type <expr> inicializacion_opt
@@ -224,9 +224,8 @@ declaracion
     ;
 
 declaEnum
-    : ENUMR IDENTIFICADOR '{' lista_enumeradores '}' {
-        char* nombre = $<cadena>2; // obligo a enum a tener key para que sea menos complejo
-        Simbolo* s = crearSimbolo(nombre, ENUMDR, strdup("enum"), @$.first_line, 0);
+    : ENUMERADOR IDENTIFICADOR '{' lista_enumeradores '}' {
+        Simbolo* s = crearSimbolo($<cadena>2, ENUMR, strdup("enum"), @$.first_line, 0);
 
         // si esta declarado en el scope actual --> redeclarado
         if (!agregarSimbolo(tablaGral, s)) {
@@ -241,15 +240,16 @@ declaEnum
             printf("Declaración válida de enum <línea:%d>\n", @$.first_line);
             $<s>$ = s;        
         }
-    } 
-        ids_opt ';' {
-            Simbolo* f = $<s>$;
+    }
+        ids_opt {
+            Simbolo* f = $<s>6;
+
             if (f != NULL) { // variables declaradas al final del enum
-                if($<arr>6) {
+                if($<arr>7) {
                     int ok = 1;
-                    for (int i = 0; i < arraySize($<arr>6); i++) {
-                        char* varEnum = (char*) findElemArray($<arr>6, i); 
-                        Simbolo* t = crearSimbolo(varEnum, VARIABLE, $<cadena>2, @$.first_line, 0);
+                    for (int i = 0; i < arraySize($<arr>7); i++) {
+                        char* varEnum = (char*) findElemArray($<arr>7, i); 
+                        Simbolo* t = crearSimbolo(varEnum, VARIABLE, f->key, @$.first_line, 0);
                         if (!agregarSimbolo(tablaGral, t)) {
                             report_error("en id_opt", @$.first_line, "error semantico, existe variable con ese nombre. No se declarara enum");
                             destruirSimbolo(t);
@@ -262,10 +262,13 @@ declaEnum
                         eliminarSimbolo(tablaGral, f);
                         destruirSimbolo(f);
                         $<s>$ = NULL;
+                    } else { 
+                        printf("Declaración válida de var de enum <línea:%d>\n", @$.first_line);
+                        $<s>$ = f; 
                     }
-                }
+                } else { $<s>$ = f; }
                 
-            } else { destruirSimbolo(f); }
+            } else { destruirSimbolo(f); $<s>$ = NULL; }
     }
 
     | error ';' {
@@ -275,7 +278,7 @@ declaEnum
     ;
 
 ids_opt
-    : /* vacío */ { $<arr>$ = NULL; }
+    : ';' { $<arr>$ = NULL; }
     | lista_ids { $<arr>$ = $<arr>1; }
     ;
 
@@ -341,7 +344,7 @@ declaVarSimple
             }
         } else { // tiene que ser identificador enum
             Simbolo* s = buscarSimbolo(tablaGral, tipo);
-            if(s && s->clase == ENUMDR) {
+            if(s && s->clase == ENUMR) {
                 Simbolo* v = crearSimbolo(
                     $<cadena>2,
                     VARIABLE,
@@ -364,8 +367,8 @@ declaVarSimple
             }
         }
     }
-        inicializacion_opt ';' {
-            Simbolo* v = $<s>$;   // el símbolo creado
+        inicializacion_opt {
+            Simbolo* v = $<s>3;   // el símbolo creado
 
             if (v != NULL) {
                 if ($<expr>4) {
@@ -378,9 +381,12 @@ declaVarSimple
                         eliminarSimbolo(tablaGral, v);
                         destruirSimbolo(v);
                         $<s>$ = NULL;
+                    } else { 
+                        printf("Declaración válida de var inicializada <línea:%d>\n", @$.first_line);
+                        $<s>$ = v; 
                     }
-                }
-            } else { destruirSimbolo(v); }
+                } else { $<s>$ = v; }
+            } else { destruirSimbolo(v); $<s>$ = NULL;}
     }
 
     | error ';' {
@@ -404,8 +410,8 @@ tipo_opt
     ;
 
 inicializacion_opt
-    : /* vacío */ { $<expr>$ = NULL; }
-    | '=' expOr { $<expr>$ = $<expr>2; }
+    : ';' { $<expr>$ = NULL; }
+    | '=' expOr ';' { $<expr>$ = $<expr>2; }
     ;
 
 declaFuncion
@@ -448,9 +454,9 @@ declaFuncion
         }    
     } 
         cuerpoFuncion_opt {
-            Simbolo* f = $<s>$;
+            Simbolo* f = $<s>6;
             char* tipoDeclarado = $<cadena>1;
-            char* tipoRetornado = $<cadena>6;
+            char* tipoRetornado = $<cadena>7;
             if (tipoRetornado == NULL && strcmp(tipoDeclarado, "void") != 0) {
                 report_error("en función", @$.first_line,
                                 "error semantico, falta retorno en funcion");
@@ -468,6 +474,9 @@ declaFuncion
                 free(tipoDeclarado);
                 free(tipoRetornado);
                 $<s>$ = NULL;
+            } else { 
+                printf("Declaración válida de funcion con cuerpo <línea:%d>\n", @$.first_line);
+                $<s>$ = f; 
             }
     }
 
@@ -563,7 +572,7 @@ sentencia
 sentCompuesta
     : '{' { reportAbrirScope("SentCompuesta"); } 
      declaraciones_opt sentencias_opt '}' 
-        { reportCerrarScope("sentCompuesta"); $<cadena>$ = $<cadena>3; }
+        { reportCerrarScope("sentCompuesta"); $<cadena>$ = $<cadena>4; }
 
     | '{' error '}' {
         report_error("en sentCompuesta", @$.first_line,
@@ -597,15 +606,15 @@ sentSeleccion
         }  
      sentencia 
         {
-            char* ret = $<cadena>5;
+            char* ret = $<cadena>6;
             reportCerrarScope("(IF)");
             $<cadena>$ = ret;
         }
      opSent 
         {
-            if ($<cadena>7 != NULL) { /* ELSE existe */
-                char* retIf   = $<cadena>5; 
-                char* retElse = $<cadena>7;
+            if ($<cadena>8 != NULL) { /* ELSE existe */
+                char* retIf   = $<cadena>6; 
+                char* retElse = $<cadena>8;
 
                 if (retIf != NULL && retElse != NULL) {
                     if (!tiposCompatibles(retIf, retElse))
@@ -956,7 +965,7 @@ argumento // no analizo funciones de orden superior
         Simbolo* s = buscarSimbolo(tablaGral, $<cadena>1);
         if (s && s->clase == VARIABLE) {
             Simbolo* enumTipo = buscarSimbolo(tablaGral, s->tipoDato);
-            if(enumTipo && enumTipo->clase == ENUMDR) {
+            if(enumTipo && enumTipo->clase == ENUMR) {
                 report_error("en argumento", @$.first_line, "tipo argumento no permitido");
                 $<cadena>$ = NULL;
             } else {
@@ -983,7 +992,7 @@ expPrimaria
                 $<expr>$ = crearExpr(s->tipoDato, 1);
             } else {
                 Simbolo* enumTipo = buscarSimbolo(tablaGral, s->tipoDato);
-                if(enumTipo && enumTipo->clase == ENUMDR) {
+                if(enumTipo && enumTipo->clase == ENUMR) {
                     $<expr>$ = crearExpr("int", 1);
                 } else {
                     report_error("en expPrimaria", @$.first_line, "variable no permitida");

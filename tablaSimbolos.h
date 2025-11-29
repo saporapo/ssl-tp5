@@ -11,7 +11,7 @@
 
 typedef enum {
     VARIABLE,
-    ENUMDR,
+    ENUMR,
     FUNCION,
 } SimboloTipo;
 

@@ -1,0 +1,263 @@
+declaracion
+    : declaVarSimple_o_funcion
+    | declaEnum
+
+declaVarSimple_o_funcion
+    : TIPO_DATO IDENTIFICADOR '=' {
+        char* tipo = $<cadena>1;
+        Simbolo* v = crearSimbolo(
+            $<cadena>2,
+            VARIABLE,
+            tipo,
+            @1.first_line,
+            0
+        );
+
+        if (!agregarSimbolo(tablaGral, v)) {
+            report_error("en declaVarSimple", @$.first_line, "error semantico, variable redeclarada.");
+            destruirSimbolo(v);
+            $<s>$ = NULL;
+        } else {
+            printf("Declaración válida de varSimple <línea:%d>\n", @$.first_line);
+            $<s>$ = v;        
+        }
+    }
+        expOr {
+            Simbolo* v = $<s>4;   // el símbolo creado
+
+            if (v != NULL) {
+                if ($<expr>5) {
+                    Expr* exprInit = $<expr>5; char* tipoInit = exprInit->tipo;
+
+                    // Validar inicialización
+                    if (!tiposCompatibles(v->tipoDato, tipoInit)) {
+                        report_error("en declaVarSimple", @$.first_line,
+                                        "error semantico, inicialización incompatible con el tipo de la variable.");
+                        eliminarSimbolo(tablaGral, v);
+                        destruirSimbolo(v);
+                        $<s>$ = NULL;
+                    } else { 
+                        printf("Declaración válida de var inicializada <línea:%d>\n", @$.first_line);
+                        $<s>$ = v; 
+                    }
+                } else { $<s>$ = v; }
+            } else { destruirSimbolo(v); $<s>$ = NULL;}
+    }
+    | TIPO_DATO '*' IDENTIFICADOR '=' {
+        char* tipo = $<cadena>1;
+        if (strcmp($<cadena>1, "char") == 0) {
+                Simbolo* v = crearSimbolo(
+                $<cadena>2,
+                VARIABLE,
+                strdup("char*"),
+                @1.first_line,
+                0
+            );
+
+            if (!agregarSimbolo(tablaGral, v)) {
+                report_error("en declaVarSimple", @$.first_line, "error semantico, variable redeclarada.");
+                destruirSimbolo(v);
+                $<s>$ = NULL;
+            } else {
+                printf("Declaración válida de varSimple <línea:%d>\n", @$.first_line);
+                $<s>$ = v;        
+            }
+        } else {
+            report_error("en declaVarSimple", @1.first_line,
+                            "no analizo punteros");
+            $<s>$ = NULL;
+        }        
+    }
+        expOr {
+            Simbolo* v = $<s>4;   // el símbolo creado
+
+            if (v != NULL) {
+                if ($<expr>5) {
+                    Expr* exprInit = $<expr>5; char* tipoInit = exprInit->tipo;
+
+                    // Validar inicialización
+                    if (!tiposCompatibles(v->tipoDato, tipoInit)) {
+                        report_error("en declaVarSimple", @$.first_line,
+                                        "error semantico, inicialización incompatible con el tipo de la variable.");
+                        eliminarSimbolo(tablaGral, v);
+                        destruirSimbolo(v);
+                        $<s>$ = NULL;
+                    } else { 
+                        printf("Declaración válida de var inicializada <línea:%d>\n", @$.first_line);
+                        $<s>$ = v; 
+                    }
+                } else { $<s>$ = v; }
+            } else { destruirSimbolo(v); $<s>$ = NULL;}
+    }
+    | TIPO_DATO IDENTIFICADOR '(' parametros_opt ')' {
+        Simbolo* s = crearSimbolo(
+            $<cadena>2,
+            FUNCION,
+            $<cadena>1,
+            @$.first_line,
+            0
+        );
+
+        if (!agregarSimbolo(tablaGral, s)) {
+            report_error("en declaFuncion", @$.first_line, "error semantico, funcion redeclarada.");
+            destruirSimbolo(s);
+            $<s>$ = NULL;
+        } else {
+            if($<arr>4) {
+                int ok = 1;
+                for (int i = 0; i < arraySize($<arr>4); i++) {
+                    char* tipoParametro = (char*) findElemArray($<arr>4, i); 
+                    if (strcmp(tipoParametro, "error") == 0) {
+                        report_error("en declaFuncion", @$.first_line, "error en parametro");
+                        free(tipoParametro);
+                        ok = 0;
+                        break;
+                    }
+                }
+                if(!ok) {
+                    eliminarSimbolo(tablaGral, s);
+                    destruirSimbolo(s);
+                    $<s>$ = NULL;
+                } 
+            } else {
+                s->miembros = $<arr>4;
+                s->cantMiembros = 0;
+                printf("Declaración válida de funcion <línea:%d>\n", @$.first_line);
+                $<s>$ = s;
+            }
+        }    
+    } 
+        cuerpoFuncion_opt {
+            Simbolo* f = $<s>6;
+            char* tipoDeclarado = $<cadena>1;
+            char* tipoRetornado = $<cadena>7;
+            if (tipoRetornado == NULL && strcmp(tipoDeclarado, "void") != 0) {
+                report_error("en función", @$.first_line,
+                                "error semantico, falta retorno en funcion");
+                eliminarSimbolo(tablaGral, f);
+                destruirSimbolo(f);
+                free(tipoDeclarado);
+                free(tipoRetornado);
+                $<s>$ = NULL;
+            } else if (tipoRetornado != NULL && strcmp(tipoRetornado, ";") != 0 &&
+                        !tiposCompatibles(tipoDeclarado, tipoRetornado)) {
+                report_error("en función", @$.first_line,
+                                "error semantico, Tipo de retorno incompatible.");
+                eliminarSimbolo(tablaGral, f);
+                destruirSimbolo(f);
+                free(tipoDeclarado);
+                free(tipoRetornado);
+                $<s>$ = NULL;
+            } else { 
+                printf("Declaración válida de funcion con cuerpo <línea:%d>\n", @$.first_line);
+                $<s>$ = f; 
+            }
+    }
+    | IDENTIFICADOR IDENTIFICADOR '=' {
+        char* tipo = $<cadena>1;
+        Simbolo* s = buscarSimbolo(tablaGral, tipo);
+        if(s && s->clase == ENUMR) {
+            Simbolo* v = crearSimbolo(
+                $<cadena>2,
+                VARIABLE,
+                tipo,
+                @1.first_line,
+                0
+            );
+            if (!agregarSimbolo(tablaGral, v)) {
+                report_error("en declaVarSimple", @$.first_line, "error semantico, variable redeclarada.");
+                destruirSimbolo(v);
+                $<s>$ = NULL;
+            } else {
+                printf("Declaración válida de varSimple <línea:%d>\n", @$.first_line);
+                $<s>$ = v;        
+            }
+        } else {
+            report_error("en declaVarSimple", @$.first_line, "error semantico, tipoDato no definido");
+            free(tipo);
+            $<s>$ = NULL;
+        }
+    }
+        expOr {
+            Simbolo* v = $<s>4;   // el símbolo creado
+
+            if (v != NULL) {
+                if ($<expr>5) {
+                    Expr* exprInit = $<expr>5; char* tipoInit = exprInit->tipo;
+
+                    // Validar inicialización
+                    if (!tiposCompatibles(v->tipoDato, tipoInit)) {
+                        report_error("en declaVarSimple", @$.first_line,
+                                        "error semantico, inicialización incompatible con el tipo de la variable.");
+                        eliminarSimbolo(tablaGral, v);
+                        destruirSimbolo(v);
+                        $<s>$ = NULL;
+                    } else { 
+                        printf("Declaración válida de var inicializada <línea:%d>\n", @$.first_line);
+                        $<s>$ = v; 
+                    }
+                } else { $<s>$ = v; }
+            } else { destruirSimbolo(v); $<s>$ = NULL;}
+    }
+
+    | error ';' {
+        report_error("en declaVarSimple_o_funcion", @$.first_line, "error sintactico de declaración.");
+        yyerrok;
+    }
+    ;
+
+cuerpoFuncion_opt
+    : sentCompuesta { $<cadena>$ = $<cadena>1; }
+    | ';' { $<cadena>$ = ";"; }
+    ;
+
+parametros_opt
+    : /* vacío */ { $<arr>$ = NULL; }
+    | lista_parametros { $<arr>$ = $<arr>1; }
+    ;
+
+lista_parametros
+    : parametro {
+        Array* arr = createArray(10);
+        if ($<p>1 != NULL) { 
+            insertElemArray(arr, $<p>1);
+            $$ = arr;
+        } else { 
+            insertElemArray(arr, "error");
+            $$ = arr;
+        }
+    }
+    | lista_parametros ',' parametro {
+        if ($<p>3 != NULL) { 
+            insertElemArray($<arr>1, $<p>3);
+            $<arr>$ = $<arr>1;
+        } else { 
+            insertElemArray($<arr>1, "error");
+            $<arr>$ = $<arr>1;
+        }
+    }
+    ;
+
+parametro
+    : TIPO_DATO IDENTIFICADOR {
+        if (strcmp($<cadena>1, "void") == 0) {
+            report_error("en parámetro", @1.first_line,
+                            "Un parámetro no puede ser de tipo 'void'.");
+            $<p>$ = NULL;
+        } else {
+            Parametro* p = crearParametro($<cadena>2, $<cadena>1);
+            $<p>$ = p;
+        }
+    }
+    | TIPO_DATO '*' IDENTIFICADOR {
+        if (strcmp($<cadena>1, "char") == 0) {
+            Parametro* p = crearParametro($<cadena>2, "char*");
+            $<p>$ = p;
+        } else {
+            report_error("en parámetro", @1.first_line,
+                            "no analizo punteros, solo char*.");
+            $<p>$ = NULL;
+        }
+    }
+    ;
+

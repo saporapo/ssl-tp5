@@ -8,13 +8,11 @@
 
 typedef void* arrItem;
 
-struct Array {
+typedef struct Array {
     arrItem* elem;
     int len;
     int capacidad;
-};
-
-typedef struct Array Array;
+} Array;
 
 Array* createArray(int capacidad_inicial);
 void destroyArray(Array* a);
