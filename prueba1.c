@@ -1,6 +1,6 @@
 enum Color {
     ROJO = 1,
-    VERDE = 0,
+    VERDE,
     AZUL = 5
 };
 

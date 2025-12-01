@@ -94,8 +94,7 @@ Simbolo* crearSimbolo (
 
     char* tipoDato,
 
-    int lineaDeclaracion,
-    int nivelScope ) {
+    int lineaDeclaracion ) {
         Simbolo* s = (Simbolo*) malloc(sizeof(Simbolo));
 
         s->key = key;
@@ -106,7 +105,6 @@ Simbolo* crearSimbolo (
 
         s->lineaDeclaracion = lineaDeclaracion;
 
-        s->nivelScope = nivelScope;
         s->miembros = createArray(50);
 
         s->cantMiembros = 0;

@@ -13,6 +13,7 @@ typedef enum {
     VARIABLE,
     ENUMR,
     FUNCION,
+    CONSTENUM
 } SimboloTipo;
 
 struct Simbolo {
@@ -67,8 +68,7 @@ Simbolo* crearSimbolo (
     char* key,
     SimboloTipo clase,
     char* tipoDato,
-    int lineaDeclaracion,
-    int nivelScope );
+    int lineaDeclaracion );
 void destruirSimbolo(Simbolo* s);
 int agregarSimbolo(TablaScopes* tabla, Simbolo* nuevo);
 void eliminarSimbolo(TablaScopes* tabla, Simbolo* sym);
