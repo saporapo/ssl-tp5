@@ -103,7 +103,6 @@ int tiposCompatibles(char* t1, char* t2) {
         return 0;
     }
 
-
     return 0;
 }
 
@@ -829,9 +828,9 @@ sentIteracion
           report_error("en WHILE", @$.first_line, "condición inválida, error sintactico");
           yyerrok;
     }
-    | FOR '(' expresion_opt ';' expresion_opt ';' expresion_opt ')'
+    | FOR '(' forInit_opt expresion_opt ';' expresion_opt ')'
         {
-            if($<expr>5 != NULL && !esNumerico($<expr>5->tipo)){
+            if($<expr>4 != NULL && !esNumerico($<expr>4->tipo)){
                 report_error("en FOR", @$.first_line, "condición inválida");
             }
             abrirScope(tablaGral);
@@ -844,6 +843,12 @@ sentIteracion
         yyerrok;
     }
     ;
+
+forInit_opt
+    : /* vacío */ { $<expr>$ = NULL; }
+    | declaracion 
+    | expresion { $<expr>$ = $<expr>1; }
+    ; 
 
 sentSalto // sentencia sin llave no tiene scope
     : RETURN expresion_opt ';' {

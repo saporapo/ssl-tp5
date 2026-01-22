@@ -25,16 +25,35 @@ int sumar(int a, int b) {
     return r;
 }
 
-int sum1 = sumar(x, 20);
-sumar(x, 3);
-
 void imprimirMensaje() {
     mensaje = "nuevo mensaje";
     return;
 }
 
-int sum2 = sumar(x, 20);
-sumar(x, 3);
-imprimirMensaje();
 
 
+int main() {
+
+    int z = sumar(x, 20);
+
+    if (z > 10) {
+        int aux = 5;
+        aux++;
+    } else {
+        z = 0;
+    }
+
+    imprimirMensaje();
+
+    sumar(x, 3);
+
+    while (x < 20) {
+        ++x;
+    }
+
+    for (int i = 0; i < 3; i++) {
+        y = y + 0.5;
+    }
+
+    return 0;
+}

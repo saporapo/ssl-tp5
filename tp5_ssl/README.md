@@ -18,3 +18,4 @@ restricciones en el programa: para asegurar el correcto analisis
 (notese diferencia entre var nomEnum y var de lst_enum constenum)
 - cuerpo de funciones void deben tener "return ;"
 - no colocar parametros repetidos en funciones, hay un problema con la eliminacion de los parametros en la tabla
+- no se pueden asignar vars int ni nums a CONSTENUM
