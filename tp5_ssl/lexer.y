@@ -1155,7 +1155,7 @@ argumento // no analizo funciones de orden superior
                 report_error("en argumento", @$.first_line, "tipo argumento no permitido");
                 $<cadena>$ = NULL;
             } else {
-                $<cadena>$ = s->tipoDato;
+                $<cadena>$ = strdup(s->tipoDato);
             }
         } else if(s && s->clase == CONSTENUM) {
             $<cadena>$ = strdup("int");

@@ -97,11 +97,11 @@ Simbolo* crearSimbolo (
     int lineaDeclaracion ) {
         Simbolo* s = (Simbolo*) malloc(sizeof(Simbolo));
 
-        s->key = key;
+        s->key = strdup(key);
 
         s->clase = clase;
 
-        s->tipoDato = tipoDato;
+        s->tipoDato = strdup(tipoDato);
 
         s->lineaDeclaracion = lineaDeclaracion;
 
@@ -253,7 +253,7 @@ Parametro* crearParametro(char* nombre, char* tipo) {
 
 Expr* crearExpr(char* tipo, int esLvalue) {
     Expr* e = malloc(sizeof(Expr));
-    e->tipo = tipo;
+    e->tipo = strdup(tipo);
     e->esLvalue = esLvalue;
     return e;
 }
